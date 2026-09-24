@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>星芽 · 独立渲染基准</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;padding:22px;background:#101a20;color:#d9e8dc;font:14px/1.6 "Segoe UI","Microsoft YaHei",sans-serif}main{max-width:1250px;margin:auto}h1{font-size:24px;margin:0 0 4px}p{color:#a8c1ba;margin:6px 0 12px}.controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:15px 0}button{font:inherit;border:1px solid #77916d;border-radius:5px;background:#294532;color:#e3f6d0;padding:9px 15px;cursor:pointer}button:disabled{opacity:.5;cursor:wait}#status{color:#dbe8a9;margin-left:5px}.scene{height:610px;max-height:67vh;min-height:330px;border:1px solid #4c675c;border-radius:6px;overflow:hidden}#benchmark-world{display:block;width:100%;height:100%}.results{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:15px 0}.metric{background:#182a2d;border:1px solid #354d47;border-radius:5px;padding:11px 13px}.metric span{font-size:11px;color:#93ada7;display:block}.metric strong{display:block;font:20px/1.7 Consolas,monospace;color:#dcefbe}.metric small{color:#9eb8b1;font-size:10px}.details{font:12px/1.8 Consolas,"Microsoft YaHei",monospace;white-space:pre-wrap;background:#142328;border:1px solid #354d47;border-radius:5px;padding:13px}.fine{font-size:11px;color:#8ba7a5}#status.failed{color:#ffb7b7}.links a{color:#cae49f}@media(max-width:700px){body{padding:12px}.results{grid-template-columns:1fr 1fr}.scene{height:500px}.metric strong{font-size:17px}}
+  </style>
+</head>
+<body>
+<main>
+  <h1>独立渲染基准 / 真实 Canvas 2D</h1>
+  <p>固定种子的合成测试场景。加载产品引擎和渲染器，不运行主游戏 UI；实体位置与特效按测试脚本驱动，不代表真人游玩或通关。</p>
+  <div class="controls"><button id="light">运行轻量场景 · 600 帧</button><button id="stress">运行压力场景 · 600 帧</button><button id="stop" disabled>停止</button><span id="status" role="status">就绪，选择一个场景。</span></div>
+  <div class="scene"><canvas id="benchmark-world" aria-label="独立性能测试画面"></canvas></div>
+  <div class="results">
+    <div class="metric"><span>实际 Canvas 像素 / CSS 尺寸</span><strong id="resolution">—</strong><small id="css-size">—</small></div>
+    <div class="metric"><span>帧间隔 · 中位 / P95</span><strong id="interval">—</strong><small id="worst-interval">最坏帧：—</small></div>
+    <div class="metric"><span>renderer.render 耗时 · 中位 / P95</span><strong id="cost">—</strong><small id="worst-cost">最坏调用：—</small></div>
+    <div class="metric"><span>非有限绘图参数 / 异常</span><strong id="errors">0 / 0</strong><small id="calls">绘图调用：0</small></div>
+  </div>
+  <div class="details" id="details">尚未运行。结果保留在页面并冻结最终画面，便于截图。</div>
+  <p class="fine">采样规则：首次渲染单独记录地形缓存建立耗时，预热 30 帧，再采样 600 帧。帧间隔来自 requestAnimationFrame 时间戳；渲染耗时来自 performance.now，包含有限值检查开销，不含场景更新、引擎求解、DOM HUD 和小地图。浏览器刷新率、分辨率及前后台状态会影响结果。</p>
+  <p class="fine links"><a href="../index.html">返回游戏</a> · 本页不在游戏操作界面中展示。</p>
+</main>
+<script src="../action-engine.js"></script>
+<script src="../action-renderer.js"></script>
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const canvas = $('benchmark-world');
+  const renderer = new ExpeditionRenderer(canvas);
+  const nativeRandom = Math.random;
+  const FRAME_COUNT = 600, WARMUP = 30, SEED = 20260923;
+  const modes = {
+    light: { title: '轻量', enemies: 17, bullets: 48, pickups: 22, hazards: 2, shots: 1, hits: 1 },
+    stress: { title: '压力', enemies: 55, bullets: 220, pickups: 80, hazards: 8, shots: 4, hits: 4 }
+  };
+  let run = null, request = 0;
+  const audit = { calls: 0, nonFinite: 0, drawingErrors: 0, runtimeErrors: 0 };
+  // Instrument only this isolated benchmark page, including its offscreen terrain.
+  const methods = ['arc','arcTo','ellipse','moveTo','lineTo','bezierCurveTo','quadraticCurveTo','fillRect','strokeRect','clearRect','rect','roundRect','translate','scale','rotate','transform','setTransform','drawImage','fillText','strokeText','createRadialGradient','createLinearGradient'];
+  for (const name of methods) {
+    const original = CanvasRenderingContext2D.prototype[name];
+    if (typeof original !== 'function') continue;
+    CanvasRenderingContext2D.prototype[name] = function(...args) {
+      audit.calls++;
+      if (args.some(arg => typeof arg === 'number' && !Number.isFinite(arg))) {
+        audit.nonFinite++;
+        throw new Error(`非有限绘图参数：${name}`);
+      }
+      try { return original.apply(this, args); }
+      catch (error) { audit.drawingErrors++; throw error; }
+    };
+  }
+
+  function seeded(seed) {
+    let value = seed >>> 0;
+    return () => { value = (value * 1664525 + 1013904223) >>> 0; return value / 4294967296; };
+  }
+  function percentile(values, fraction) {
+    const sorted = [...values].sort((a,b) => a-b);
+    return sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * fraction) - 1)] || 0;
+  }
+  const ms = value => `${value.toFixed(2)} ms`;
+
+  function createFixture(config) {
+    const rng = seeded(SEED);
+    const game = new Expedition.Game({ random: rng, mapId: new URLSearchParams(location.search).get('map') || 'frontier' });
+    game.start();
+    game.player.x = 1600; game.player.y = 1200;
+    game.player.hp = game.player.maxHp;
+    game.player.weapon = 2;
+    const types = ['crawler','spitter','charger','tank'];
+    for (let i = 0; i < config.enemies; i++) {
+      const type = i === config.enemies - 1 ? 'boss' : types[i % types.length];
+      const enemy = game.spawnEnemy(type, { x: 1160 + rng() * 880, y: 990 + rng() * 420 });
+      if (!enemy) throw new Error(`压力场景创建敌人失败：${i}`);
+      enemy.fixtureX = enemy.x; enemy.fixtureY = enemy.y;
+      enemy.fixturePhase = rng() * Math.PI * 2;
+      enemy.hp *= 0.72; enemy.stage = 2; enemy.attackCount = 5;
+    }
+    game.bullets = Array.from({length:config.bullets}, (_,i) => {
+      const angle = rng() * Math.PI * 2;
+      return { id: 10000+i, x: 0, y: 0, vx: Math.cos(angle)*650, vy: Math.sin(angle)*650,
+        radius: i%3 === 0 ? 4 : 3, owner: i%3 === 0 ? 'enemy' : 'player',
+        color: i%3 === 0 ? '#fb9dbc' : i%3 === 1 ? '#a1f5d7' : '#c5b6ff',
+        kind: i%3 !== 0 && i%5 === 3 ? 'grenade' : i%3 !== 0 && i%5 === 4 ? 'boomerang' : undefined, returning: i%2 === 0, age: .5, overcharged: i%7 === 0, fixturePhase: rng(), fixtureX: 1140+rng()*920, fixtureY: 960+rng()*480 };
+    });
+    game.pickups = Array.from({length:config.pickups}, (_,i) => ({id:20000+i, x:1160+rng()*880, y:995+rng()*410,
+      type:i%7 === 0 ? 'heal' : i%3 === 0 ? 'credits' : 'xp', radius:6, value:5}));
+    game.hazards = Array.from({length:config.hazards}, (_,i) => ({id:30000+i,
+      type:['charge','blast','lane','ring'][i%4], innerRadius:55, color:i%2 ? '#8edcff' : '#ff9955', x:1240+rng()*700, y:1010+rng()*380,
+      radius:i%3 === 0 ? 35 : 85+i%3*15, angle:rng()*Math.PI*2, length:470,
+      duration:1.2, remaining:1.2, enemyType:i%2 ? 'tank' : 'boss', sourceId:game.enemies[i%game.enemies.length].id}));
+    game.relays[0].status = 'charging'; game.relays[0].progress = 0.63;
+    game.events.length = 0;
+    return game;
+  }
+
+  function animateFixture(state, frame) {
+    const {game, config} = state, t = frame / 60;
+    const phaseLoad = config === modes.stress;
+    if (phaseLoad) {
+      game.reactor.timer = frame % 480 < 420 ? (420 - frame % 480) / 60 : 0;
+      game.reactor.charge = frame % 480 < 420 ? 0 : (frame % 480 - 420) / 60 * 100;
+      game.combo.count = Math.floor(frame / 30) * 5;
+      game.combo.timer = 3;
+    }
+    game.elapsed = t;
+    game.player.x = 1600 + Math.sin(t * 0.7) * 28;
+    game.player.y = 1200 + Math.cos(t * 0.55) * 20;
+    game.player.angle = t * 0.5;
+    game.player.weapon = Math.floor(t / 2) % Expedition.WEAPONS.length;
+    game.player.dashTimer = frame%150 < 12 ? 0.15 : 0;
+    game.player.reloadTimer = frame%210 > 145 ? 0.8 : 0;
+    game.player.reloadProgress = (frame%210-145)/65;
+    game.enemies.forEach((enemy,i) => {
+      enemy.x = enemy.fixtureX + Math.sin(t+i) * 20;
+      enemy.y = enemy.fixtureY + Math.cos(t*.8+i) * 15;
+      enemy.angle = Math.atan2(game.player.y-enemy.y, game.player.x-enemy.x);
+      enemy.windup = (frame+i*7)%120 < 38 ? 0.45 : 0;
+      enemy.recoveryTimer = (frame+i*7)%120 > 88 ? 0.7 : 0;
+      enemy.attackKind = enemy.type === 'boss' ? 'ring' : 'slam';
+      enemy.phaseMarkTimer = phaseLoad && i % 3 !== 0 ? 4 - (frame + i * 11) % 240 / 60 : 0;
+    });
+    game.bullets.forEach(bullet => {
+      bullet.x = 1120 + ((bullet.fixtureX-1120 + t*bullet.vx*.5)%960+960)%960;
+      bullet.y = 930 + ((bullet.fixtureY-930 + t*bullet.vy*.5)%540+540)%540;
+      bullet.reactor = phaseLoad && game.reactor.timer > 0 && bullet.owner === 'player';
+    });
+    game.hazards.forEach((hazard,i) => { hazard.remaining = hazard.duration*(1-((frame+i*11)%90)/90); });
+    const events = [];
+    if (frame%3 === 0) {
+      for (let i=0;i<config.shots;i++) events.push({type:'shot',x:game.player.x,y:game.player.y,angle:game.player.angle+i*.06,weapon:game.player.weapon,owner:'player',overcharged:frame%120<60,reactor:phaseLoad && game.reactor.timer > 0});
+    }
+    for (let i=0;i<config.hits;i++) {
+      const enemy = game.enemies[(frame*3+i)%game.enemies.length];
+      events.push({type:'hit',x:enemy.x,y:enemy.y,enemyId:enemy.id,amount:18+i*7,critical:frame%7 === 0,color:'#ddffcb'});
+    }
+    if (frame%12 === 0) {
+      const enemy = game.enemies[frame%game.enemies.length];
+      events.push({type:'kill',x:enemy.x,y:enemy.y,enemyType:enemy.type,radius:enemy.radius,angle:enemy.angle});
+      if(config === modes.stress) events.push({type:'arc',x:enemy.x,y:enemy.y,toX:enemy.x+100,toY:enemy.y-80,color:'#a7ebff'});
+    }
+    if(frame%60 === 0) events.push({type:'hazard-burst',hazardType:frame%120 ? 'lane' : 'ring',x:1520,y:1120,radius:frame%120 ? 32 : 160,innerRadius:75,angle:.4,length:380,color:'#8edcff'});
+    if(frame%90 === 0) events.push({type:'grenade-burst',x:1630,y:1190,radius:110,color:'#e8c592'});
+    if(frame%150 === 0) events.push({type:'dash',x:game.player.x,y:game.player.y,angle:game.player.angle});
+    if (phaseLoad) {
+      if (frame % 480 === 0) events.push({type:'overdrive-start',x:game.player.x,y:game.player.y,duration:7});
+      if (frame % 480 === 420) events.push({type:'overdrive-end',x:game.player.x,y:game.player.y});
+      if (frame % 24 === 0) for (let i = 0; i < 3; i++) {
+        const enemy = game.enemies[(frame + i * 5) % game.enemies.length];
+        events.push({type:'phase-burst',x:enemy.x,y:enemy.y,radius:125,color:'#ac9dff',chain:i});
+      }
+      if (frame % 8 === 0) for (let i = 0; i < 2; i++) {
+        const bullet = game.bullets[(frame + i * 3) % game.bullets.length];
+        events.push({type:'phase-capture',x:bullet.x,y:bullet.y,count:1});
+      }
+      if (frame % 30 === 0) {
+        const enemy = game.enemies[frame % game.enemies.length];
+        events.push({type:'phase-mark',x:enemy.x,y:enemy.y,enemyId:enemy.id});
+        events.push({type:'combo',x:game.player.x,y:game.player.y,count:game.combo.count});
+      }
+    }
+    renderer.consume(events);
+    state.peakParticles = Math.max(state.peakParticles, renderer.particles.length);
+    state.peakEffects = Math.max(state.peakEffects, renderer.particles.length+renderer.rings.length+renderer.numbers.length+renderer.ghosts.length+renderer.arcs.length+renderer.muzzles.length+renderer.scars.length+renderer.hazardEchoes.length);
+  }
+
+  function refreshReadout(state, complete) {
+    const rect = canvas.getBoundingClientRect();
+    $('resolution').textContent = `${canvas.width} × ${canvas.height}`;
+    $('css-size').textContent = `${Math.round(rect.width)} × ${Math.round(rect.height)} CSS px · DPR ${renderer.dpr}`;
+    $('interval').textContent = `${ms(percentile(state.intervals,.5))} / ${ms(percentile(state.intervals,.95))}`;
+    $('worst-interval').textContent = `最坏帧：${ms(Math.max(0,...state.intervals))}`;
+    $('cost').textContent = `${ms(percentile(state.costs,.5))} / ${ms(percentile(state.costs,.95))}`;
+    $('worst-cost').textContent = `最坏调用：${ms(Math.max(0,...state.costs))}`;
+    $('errors').textContent = `${audit.nonFinite} / ${audit.drawingErrors+audit.runtimeErrors}`;
+    $('calls').textContent = `绘图函数调用：${audit.calls.toLocaleString()}`;
+    const cfg=state.config;
+    $('details').textContent = `${cfg.title}场景 · seed=${SEED} · ${complete?'完成并冻结':'已停止'}\n`+
+      `采样帧：${state.costs.length}/${FRAME_COUNT}；预热：${Math.min(state.frame,WARMUP)}/${WARMUP}；后台采样帧：${state.hiddenFrames}\n`+
+      `实体：${state.game.enemies.length} 敌人（含 1 Boss）、${cfg.bullets} 子弹、${cfg.pickups} 拾取物、${cfg.hazards} 危险区域\n`+
+      `特效峰值：${state.peakParticles} 粒子；${state.peakEffects} 全部效果对象（含伤害数字和残骸）\n`+
+      (cfg === modes.stress ? '2.4 负载：五武器弹体、胶囊线与空心环预警/余辉、相位标记与连锁引爆、暴走、吸弹、连击\n' : '')+
+      `首次渲染 / 地形缓存建立：${ms(state.coldCost)}；采样耗时：${((performance.now()-state.startedAt)/1000).toFixed(2)} s\n`+
+      `原始间隔样本：${state.intervals.length}；原始渲染耗时样本：${state.costs.length}\n`+
+      (state.hiddenFrames ? '注意：包含后台采样，帧间隔不适合用于前台性能比较。' : '所有采样均在可见页面中执行。');
+    state.summary = {mode:cfg.title,seed:SEED,frames:state.costs.length,canvas:[canvas.width,canvas.height],css:[rect.width,rect.height],
+      intervalMedian:percentile(state.intervals,.5),intervalP95:percentile(state.intervals,.95),intervalMax:Math.max(0,...state.intervals),
+      rendererMedian:percentile(state.costs,.5),rendererP95:percentile(state.costs,.95),rendererMax:Math.max(0,...state.costs),
+      coldCost:state.coldCost,peakParticles:state.peakParticles,peakEffects:state.peakEffects,hiddenFrames:state.hiddenFrames,audit:{...audit}};
+    window.renderBenchmarkResult = state.summary;
+  }
+
+  function finish(complete, error) {
+    if (!run) return;
+    cancelAnimationFrame(request);
+    if(error) audit.runtimeErrors++;
+    refreshReadout(run, complete);
+    $('status').textContent = error ? `失败：${error.message}` : complete ? '600 帧完成，最终画面已冻结。' : '已停止，保留当前样本。';
+    $('status').className = error ? 'failed' : '';
+    Math.random=nativeRandom;
+    $('light').disabled=$('stress').disabled=false; $('stop').disabled=true;
+    run=null;
+  }
+
+  function tick(timestamp) {
+    if(!run)return;
+    const state=run;
+    try {
+      animateFixture(state,state.frame);
+      const begin=performance.now(); renderer.render(state.game,1/60); const cost=performance.now()-begin;
+      if(state.frame>=WARMUP) {
+        state.costs.push(cost);
+        state.intervals.push(timestamp-state.previousTime);
+        if(document.hidden)state.hiddenFrames++;
+      }
+      state.previousTime=timestamp; state.frame++;
+      if(state.frame%30 === 0)$('status').textContent=state.frame<=WARMUP?'预热中…':`${state.config.title}场景：${state.costs.length}/${FRAME_COUNT} 帧`;
+      if(state.costs.length>=FRAME_COUNT)finish(true);
+      else request=requestAnimationFrame(tick);
+    } catch(error) { finish(false,error); }
+  }
+
+  function start(mode) {
+    if(run)return;
+    $('light').disabled=$('stress').disabled=true; $('stop').disabled=false;
+    $('status').className=''; $('status').textContent='创建固定场景与地形缓存…';
+    Object.keys(audit).forEach(key=>{audit[key]=0;});
+    renderer.resize();renderer.resetEffects();renderer.reducedMotion=false;renderer.trackedRelayId=null;
+    Math.random=seeded(SEED+1);
+    try {
+      const game=createFixture(modes[mode]);
+      run={game,config:modes[mode],frame:0,previousTime:0,costs:[],intervals:[],hiddenFrames:0,peakParticles:0,peakEffects:0,coldCost:0,startedAt:performance.now()};
+      const begin=performance.now();renderer.render(game,1/60);run.coldCost=performance.now()-begin;
+      request=requestAnimationFrame(tick);
+    } catch(error) {
+      if(run)finish(false,error);
+      else {Math.random=nativeRandom;$('status').textContent=`创建失败：${error.message}`;$('status').className='failed';$('light').disabled=$('stress').disabled=false;$('stop').disabled=true;}
+    }
+  }
+  $('light').addEventListener('click',()=>start('light'));
+  $('stress').addEventListener('click',()=>start('stress'));
+  $('stop').addEventListener('click',()=>finish(false));
+  window.addEventListener('resize',()=>{if(run)finish(false,new Error('测试中尺寸发生变化，请重新运行。'));renderer.resize();});
+  const preview=createFixture(modes.light);renderer.render(preview,0);
+  const rect=canvas.getBoundingClientRect();$('resolution').textContent=`${canvas.width} × ${canvas.height}`;$('css-size').textContent=`${Math.round(rect.width)} × ${Math.round(rect.height)} CSS px · DPR ${renderer.dpr}`;
+})();
+</script>
+</body>
+</html>

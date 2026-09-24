@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101815">
+  <title>星芽守夜 · STARSPROUT</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="./index.html" aria-label="星芽守夜首页"><span class="brand-mark">✳</span><span>STARSPROUT<small>一座花园，一整个夜晚。</small></span></a>
+    <nav><span class="offline"><i></i> 本地星球 · 离线可玩</span><button id="sound" class="icon-button" aria-label="开启音效" title="开启音效">♪<span>音效关</span></button><button id="help" class="icon-button">?<span>玩法</span></button></nav>
+  </header>
+
+  <main>
+    <section class="page-heading">
+      <div><div class="eyebrow">MERGE. GROW. SURVIVE.</div><h1>星芽守夜<span class="title-dot">.</span></h1><p>把微小的种子，合成守护星球的力量。</p></div>
+      <div class="record"><span>个人最佳</span><strong id="best-score">0000</strong><small>BEST RECORD ↗</small></div>
+    </section>
+
+    <section class="game-layout" aria-label="星芽守夜游戏">
+      <aside class="mission-panel">
+        <div class="section-label"><span>守夜计划</span><span>01—06</span></div>
+        <h2>撑到天亮。</h2><p class="muted">六次怪潮之后，<br>这颗星球会重新发光。</p>
+        <ol id="wave-list" class="wave-list">
+          <li data-wave="1"><span class="wave-node">01</span><div>初夜来客<small>让种子站稳脚跟</small></div><i>↗</i></li>
+          <li data-wave="2"><span class="wave-node">02</span><div>虫群低语<small>试着合成更高等级</small></div><i></i></li>
+          <li data-wave="3"><span class="wave-node">03</span><div>雾色边界<small>冰霜与花火的配合</small></div><i></i></li>
+          <li data-wave="4"><span class="wave-node">04</span><div>深夜奔袭<small>准备好你的共鸣</small></div><i></i></li>
+          <li data-wave="5"><span class="wave-node">05</span><div>最后的长夜<small>让整座花园苏醒</small></div><i></i></li>
+          <li data-wave="6"><span class="wave-node">06</span><div>黎明之前<small>击退噬星巨兽</small></div><i>✧</i></li>
+        </ol>
+        <div class="field-note"><span>✧ 园丁手记 / 001</span><p>更强的一株，还是更多的火力？每次合成，也是一次取舍。</p></div>
+      </aside>
+
+      <div class="arena-column">
+        <div class="arena-toolbar"><div class="phase-tag" id="phase-tag"><i></i><span id="phase-label">准备阶段</span></div><span id="wave-title">WAVE 01 / 06</span><button id="pause" class="small-button" aria-label="暂停游戏">Ⅱ</button></div>
+        <div class="arena" id="arena">
+          <canvas id="game-canvas" width="960" height="660" role="img" aria-label="中央4乘4植物炮塔花园，滑动合成后开始守夜。"></canvas>
+          <div class="arena-coordinate coord-left">KEPLER GARDEN<br><span>SECTOR 042 · NIGHTFALL</span></div>
+          <div class="arena-coordinate coord-right"><span class="live-dot"></span><span id="arena-status">等待部署</span></div>
+          <div class="board-hint" id="board-hint"><span>↑ ← ↓ →</span> 滑动整个花园，相同植物碰撞升级</div>
+          <div class="arena-bottom"><span><i class="legend-dot enemy-dot"></i> 怪潮从四周接近</span><span>守住中央的星核 <i class="legend-dot core-dot"></i></span></div>
+          <div class="overlay hidden" id="overlay" role="dialog" aria-modal="true" aria-labelledby="overlay-title">
+            <div class="modal-card" id="modal-card"></div>
+          </div>
+          <div id="toast" class="toast" role="status"></div>
+        </div>
+        <div class="core-status"><span>✧ 星核生命</span><div class="health-track"><div id="health-fill"></div></div><strong id="health-value">100<span> / 100</span></strong><span class="score-label">星尘 <b id="score">0</b></span></div>
+        <div class="action-panel">
+          <div class="move-info"><span id="action-label">本轮培育</span><div id="move-dots" class="move-dots"></div><small id="action-tip">还可以滑动 5 次</small></div>
+          <div class="direction-controls" aria-label="滑动方向"><button data-dir="left" aria-label="向左滑动">←</button><div><button data-dir="up" aria-label="向上滑动">↑</button><button data-dir="down" aria-label="向下滑动">↓</button></div><button data-dir="right" aria-label="向右滑动">→</button></div>
+          <button id="primary-action" class="primary-button"><span>开始守夜</span><b>↗</b></button>
+        </div>
+        <div class="keyboard-hint"><span><kbd>W A S D</kbd> / <kbd>方向键</kbd> 合成</span><span><kbd>空格</kbd> 释放共鸣</span><span><kbd>P</kbd> 暂停</span></div>
+      </div>
+
+      <aside class="garden-panel">
+        <div class="section-label"><span>下一颗种子</span><span>COMING UP</span></div>
+        <div class="next-seed"><canvas id="seed-preview" width="140" height="130" aria-hidden="true"></canvas><div><small>LV. 01</small><h3 id="next-name">日光芽</h3><p id="next-description">单体追踪 · 稳定输出</p></div></div>
+        <div class="separator"></div>
+        <div class="section-label"><span>你的植物图鉴</span><span>03 SPECIES</span></div>
+        <div class="plant-card sun-card"><span class="plant-symbol">✺</span><div><h3>日光芽 <em>攻击</em></h3><p>凝聚星光，击中最近的敌人。</p></div></div>
+        <div class="plant-card frost-card"><span class="plant-symbol">❋</span><div><h3>霜铃草 <em>控制</em></h3><p>寒冷的光束，拖慢虫群脚步。</p></div></div>
+        <div class="plant-card bloom-card"><span class="plant-symbol">✿</span><div><h3>爆米花 <em>范围</em></h3><p>一簇小小花火，照亮一片黑暗。</p></div></div>
+        <div class="resonance-card"><div><span class="resonance-icon">◎</span><strong>星核共鸣</strong><kbd>SPACE</kbd></div><p>战斗中释放冲击波，击退并伤害周围的虫群。</p><div class="cooldown-track"><div id="cooldown-fill"></div></div><small id="pulse-status">等待怪潮 · 每 12 秒可用</small></div>
+        <div class="upgrades-block"><div class="section-label"><span>已获得的强化</span><span id="upgrade-count">00</span></div><div id="upgrade-list"><p class="empty-note">每次守住怪潮，都有新的成长。</p></div></div>
+      </aside>
+    </section>
+    <footer><span>一个关于合成、选择与守护的小游戏。</span><div><button id="restart">↻ 重新开始</button><a href="REFERENCES.md" target="_blank" rel="noopener">灵感与开源致谢 ↗</a></div></footer>
+  </main>
+  <div id="announcement" class="sr-only" aria-live="polite"></div>
+  <script src="engine.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>

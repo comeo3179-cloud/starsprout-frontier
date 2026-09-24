@@ -1,0 +1,35 @@
+# 本仓库只发布游戏源码。以下内容留在本机，不进入版本库。
+# 构建与依赖
+build-tools/
+node_modules/
+
+# 发布产物与部署记录（含内部环境 ID 与嵌套的 site-source/.git）
+release/
+
+# QA 报告、浏览器截图与仿真记录
+reports/
+
+# 平台托管配置与本地工具配置
+.openai/
+.claude/
+
+# 打包归档
+*.zip
+*.tar
+*.tar.gz
+
+# 质量检查与发布脚本：硬编码本机 Playwright 缓存路径与线上发布环境 ID，
+# 在其它机器上必然报错，因此不随仓库分发。仅scripts/simulate-expedition.js可移植。
+scripts/build-web.cjs
+scripts/check-phase-ui.cjs
+scripts/check-sectors-ui.cjs
+scripts/check-threats-ui.cjs
+scripts/verify-phase-release.cjs
+scripts/verify-sectors-release.cjs
+
+# 系统与编辑器垃圾文件
+Thumbs.db
+desktop.ini
+.DS_Store
+*.swp
+*~
