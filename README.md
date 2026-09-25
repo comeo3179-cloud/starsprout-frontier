@@ -12,6 +12,8 @@
 
 ## 开始游玩
 
+在线试玩，无需安装：<https://comeo3179-cloud.github.io/starsprout-frontier/>
+
 双击 `index.html` 即可离线游玩；所有图形和音效均在本地生成，无需下载素材或安装依赖。
 
 也可使用已安装的 Node.js：
