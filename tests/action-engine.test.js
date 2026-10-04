@@ -925,7 +925,7 @@ test('first-minute director introduces ranged attacks after 12 seconds and retai
 });
 
 test('map selection creates distinct layouts and reset preserves or validates the selection', () => {
-  assert.deepEqual(MAPS.map(map => map.id), ['frontier', 'foundry', 'frost']);
+  assert.deepEqual(MAPS.map(map => map.id), ['frontier', 'foundry', 'frost', 'storm', 'ruins']);
   const layouts = new Set();
   for (const map of MAPS) {
     const game = new Game({ mapId: map.id });
@@ -939,7 +939,7 @@ test('map selection creates distinct layouts and reset preserves or validates th
     game.reset(); assert.equal(game.map.id, map.id);
     game.reset('missing-map'); assert.equal(game.map.id, 'frontier');
   }
-  assert.equal(layouts.size, 3);
+  assert.equal(layouts.size, MAPS.length);
   assert.equal(new Game({ mapId: 'bad' }).map.id, 'frontier');
 });
 
@@ -1146,18 +1146,19 @@ test('ice slowing lasts two seconds, normal movement recovers and dash keeps ful
   assert.equal(immune.player.slowTimer, 0); assert.equal(immune.player.hp, 120);
 });
 
-test('map threats activate after six seconds, warn clearly and repeat on a twelve-second interval', () => {
-  for (const map of MAPS) {
+test('map threats warn clearly and repeat at their specified sector interval', () => {
+  // Delivery warnings are tied to carrying cargo and have separate 4.0 tests.
+  for (const map of MAPS.filter(map => map.mode !== 'delivery')) {
     const game = new Game({ mapId: map.id, random: () => .5 }); game.start();
     at(game, game.relays[0]); game.interact();
-    game._updateSectorThreat(5.9); assert.equal(game.sectorThreat.count, 0);
+    game._updateSectorThreat(map.id === 'storm' ? 2.4 : 5.9); assert.equal(game.sectorThreat.count, 0);
     game._updateSectorThreat(.11); assert.equal(game.sectorThreat.count, 1);
     const hazard = game.hazards.find(item => item.owner === 'environment');
     assert.ok(hazard.duration >= 1.3); assert.equal(hazard.name, map.threat.name); assert.ok(hazard.hint);
     assert.equal(hazard.type, map.id === 'foundry' ? 'lane' : 'blast');
     assert.equal(hazard.effect, map.id === 'frost' ? 'slow' : undefined);
     assert.ok(game._hazardHits(hazard, game.player));
-    game._updateHazards(2); game._updateSectorThreat(11.9); assert.equal(game.sectorThreat.count, 1);
+    game._updateHazards(2); game._updateSectorThreat(game.sectorThreat.interval - .1); assert.equal(game.sectorThreat.count, 1);
     game._updateSectorThreat(.11); assert.equal(game.sectorThreat.count, 2);
     assert.equal(game.drainEvents().filter(event => event.type === 'sector-warning').length, 2);
   }
@@ -1200,7 +1201,7 @@ test('killing or removing a hazard source cancels its warning without damage or 
 });
 
 test('slow state, warnings and threat timers freeze with decisions and reset cleanly on every map', () => {
-  for (const map of MAPS) {
+  for (const map of MAPS.filter(map => map.mode !== 'delivery')) {
     const game = new Game({ mapId: map.id }); game.start(); at(game, game.relays[0]); game.interact();
     game.sectorThreat.timer = 0; game._updateSectorThreat(.01); game.player.slowTimer = 2;
     const before = { timer: game.sectorThreat.timer, warning: game.hazards[0].remaining };
@@ -1215,8 +1216,8 @@ test('slow state, warnings and threat timers freeze with decisions and reset cle
 });
 
 test('all map bosses expose three distinct attacks with the matching warning shapes', () => {
-  const patterns = { frontier: ['blast', 'ring', 'charge'], foundry: ['heat-cross', 'fan', 'charge'], frost: ['ice-ring', 'ice-hunt', 'charge'] };
-  for (const map of MAPS) for (let index = 0; index < 3; index += 1) {
+  const patterns = { frontier: ['blast', 'ring', 'charge'], foundry: ['heat-cross', 'fan', 'charge'], frost: ['ice-ring', 'ice-hunt', 'charge'], storm: ['storm-call', 'storm-cross', 'fan'] };
+  for (const map of MAPS.filter(map => map.mode !== 'delivery')) for (let index = 0; index < 3; index += 1) {
     const game = new Game({ mapId: map.id, random: () => .5 }); game.start(); game.obstacles = [];
     game.player.x = 1000; game.player.y = 1000;
     const boss = game.spawnEnemy('boss', { x: 1240, y: 1000 }); boss.attackTimer = 0; boss.attackCount = index;
@@ -1229,7 +1230,7 @@ test('all map bosses expose three distinct attacks with the matching warning sha
     if (map.id === 'frost' && index === 1) { assert.equal(game.hazards[0].effect, 'slow'); assert.equal(game.hazards[0].type, 'blast'); }
     assert.equal(game.drainEvents().filter(event => event.type === 'boss-attack').length, 1);
     const windup = boss.windup; game._updateBoss(boss, windup + .01, -1, 0, 240);
-    if (index === 2) assert.ok(boss.chargeTimer > 0);
+    if (index === 2 && map.id !== 'storm') assert.ok(boss.chargeTimer > 0);
     else { assert.ok(boss.recoveryTimer > 0); assert.equal(boss.attackName, ''); }
     if (map.id === 'foundry' && index === 1) assert.equal(game.bullets.length, 7);
     if (map.id === 'frontier' && index === 1) assert.equal(game.bullets.length, 14);

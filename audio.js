@@ -1,12 +1,83 @@
 /* Synthesized locally: no audio downloads or third-party samples. */
 (() => {
   'use strict';
+  const MUSIC = {
+    explore: { bpm: 78, melody: [72, 0, 76, 0, 79, 0, 76, 0, 74, 0, 72, 0, 67, 0, 71, 0], roots: [48, 45, 53, 50], thirds: [4, 3, 4, 3], lead: 'sine' },
+    combat: { bpm: 104, melody: [69, 72, 76, 72, 79, 76, 72, 67, 69, 72, 76, 81, 79, 76, 72, 71], roots: [45, 41, 48, 43], thirds: [3, 4, 4, 4], lead: 'triangle' },
+    boss: { bpm: 122, melody: [71, 74, 77, 74, 83, 77, 74, 71, 72, 76, 79, 76, 84, 79, 76, 74], roots: [47, 43, 48, 42], thirds: [3, 4, 4, 3], lead: 'triangle' }
+  };
   class FrontierAudio {
-    constructor() { this.enabled = true; this.context = null; this.voices = 0; this.lastPlayed = Object.create(null); }
+    constructor() {
+      this.enabled = true; this.context = null; this.voices = 0; this.lastPlayed = Object.create(null);
+      this.musicEnabled = true; this.musicScene = 'silent'; this.musicMap = ''; this.musicTimer = null; this.musicVoices = new Set(); this.unlocked = false;
+    }
 
     setEnabled(enabled) {
-      this.enabled = enabled;
-      if (this.master) this.master.gain.setTargetAtTime(enabled ? .55 : 0, this.context.currentTime, .025);
+      this.enabled = !!enabled;
+      if (this.master) this.master.gain.setTargetAtTime(this.enabled ? .55 : 0, this.context.currentTime, .025);
+      this._syncMusic();
+    }
+
+    setMusicEnabled(enabled) { this.musicEnabled = !!enabled; this._syncMusic(); }
+
+    setScene(scene, mapId = '') {
+      scene = MUSIC[scene] ? scene : 'silent';
+      if (scene !== this.musicScene || mapId !== this.musicMap) { this._stopMusic(); this.musicScene = scene; this.musicMap = mapId; }
+      this._syncMusic();
+    }
+
+    _syncMusic() {
+      if (!this.unlocked || !this.musicGain || !this.enabled || !this.musicEnabled || !MUSIC[this.musicScene] || this.context.state !== 'running' || window.document?.hidden) {
+        if (this.musicTimer !== null || this.musicVoices.size) this._stopMusic();
+        return;
+      }
+      if (this.musicTimer !== null) return;
+      const at = this.context.currentTime;
+      this.musicGain.gain.cancelScheduledValues(at); this.musicGain.gain.setTargetAtTime(1, at, .12);
+      this.musicStep = 0; this.musicNext = at + .03; this._scheduleMusic();
+    }
+
+    _stopMusic() {
+      if (this.musicTimer !== null) { window.clearTimeout(this.musicTimer); this.musicTimer = null; }
+      if (!this.musicGain) return;
+      const at = this.context.currentTime;
+      this.musicGain.gain.cancelScheduledValues(at); this.musicGain.gain.setTargetAtTime(0, at, .025);
+      for (const voice of this.musicVoices) if (!voice.musicStopped) { voice.musicStopped = true; voice.stop(at + .06); }
+    }
+
+    _scheduleMusic() {
+      if (!this.enabled || !this.musicEnabled || this.context.state !== 'running' || window.document?.hidden || !MUSIC[this.musicScene]) { this._stopMusic(); return; }
+      const now = this.context.currentTime, score = MUSIC[this.musicScene], interval = 30 / score.bpm;
+      if (this.musicNext < now - .15) { this.musicNext = now + .02; this.musicStep = 0; }
+      for (let count = 0; this.musicNext < now + .12 && count < 4; count++) {
+        this._musicBeat(score, this.musicStep++, this.musicNext); this.musicNext += interval;
+      }
+      this.musicTimer = window.setTimeout(() => { this.musicTimer = null; this._scheduleMusic(); }, 60);
+    }
+
+    _musicBeat(score, step, at) {
+      const shift = { foundry: -2, frost: 5, storm: 2, ruins: 7, voyage: 7 }[this.musicMap] || 0;
+      const bar = Math.floor(step / 8) % score.roots.length, root = score.roots[bar] + shift, lead = score.melody[step % score.melody.length], interval = 30 / score.bpm;
+      if (step % 8 === 0) for (const offset of [0, score.thirds[bar], 7]) this._musicNote(root + 12 + offset, at, interval * 5.5, .021, 'sine');
+      if (step % (this.musicScene === 'explore' ? 4 : 2) === 0) this._musicNote(root, at, interval * 1.4, .06, 'triangle');
+      if (lead) this._musicNote(lead + shift, at, interval * .72, this.musicScene === 'explore' ? .035 : .045, score.lead);
+      if (this.musicScene !== 'explore' && step % 2 === 0) this._musicNote(35, at, .10, .045, 'sine', 23);
+      if (this.musicScene === 'boss' && step % 4 === 2) this._musicNote(86, at, .055, .018, 'triangle', 62);
+    }
+
+    _musicNote(midi, at, duration, volume, shape, endMidi = midi) {
+      if (this.musicVoices.size >= 12 || this.voices >= 48) return;
+      const ctx = this.context, oscillator = ctx.createOscillator(), gain = ctx.createGain(), frequency = pitch => 440 * 2 ** ((pitch - 69) / 12);
+      oscillator.type = shape; oscillator.frequency.setValueAtTime(frequency(midi), at);
+      oscillator.frequency.exponentialRampToValueAtTime(frequency(endMidi), at + duration);
+      gain.gain.setValueAtTime(.001, at); gain.gain.exponentialRampToValueAtTime(volume, at + .015);
+      gain.gain.exponentialRampToValueAtTime(.001, at + duration);
+      oscillator.connect(gain); gain.connect(this.musicGain); oscillator.start(at); oscillator.stop(at + duration + .02);
+      this.musicVoices.add(oscillator); this.voices++;
+      oscillator.onended = () => {
+        if (!this.musicVoices.delete(oscillator)) return;
+        oscillator.disconnect(); gain.disconnect(); this.voices--;
+      };
     }
 
     init() {
@@ -15,12 +86,15 @@
       if (!Context) return;
       this.context = new Context();
       this.master = this.context.createGain(); this.master.gain.value = .55;
+      this.musicGain = this.context.createGain(); this.musicGain.gain.value = 0; this.musicGain.connect(this.master);
       const compressor = this.context.createDynamicsCompressor();
       compressor.threshold.value = -16; compressor.ratio.value = 5;
       this.master.connect(compressor); compressor.connect(this.context.destination);
       this.noise = this.context.createBuffer(1, this.context.sampleRate, this.context.sampleRate);
       const data = this.noise.getChannelData(0);
       for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+      this.context.addEventListener?.('statechange', () => this._syncMusic());
+      window.document?.addEventListener('visibilitychange', () => this._syncMusic());
     }
 
     note(from, to, duration, volume, shape = 'sine', delay = 0) {
@@ -54,10 +128,13 @@
 
     play(kind, weapon = 0) {
       if (!this.enabled) return;
+      if ((kind === 'secret-trigger' || kind === 'secret-discovered') && this.context?.state !== 'running') return;
       try {
         this.init(); if (!this.context) return;
-        if (this.context.state === 'suspended') this.context.resume();
-        const spacing = kind === 'phase-mark' ? .075 : kind === 'phase-capture' ? .055 : kind === 'phase-burst' || kind === 'grenade-burst' ? .065 : kind === 'hazard-burst' ? .08 : kind === 'sector-warning' ? .7 : kind === 'boss-attack' ? .45 : kind === 'combo' ? .1 : 0;
+        this.unlocked = true;
+        if (this.context.state === 'suspended') this.context.resume()?.then(() => this._syncMusic()).catch(() => {});
+        this._syncMusic();
+        const spacing = kind.startsWith('voyage-') ? kind === 'voyage-device' ? .12 : .4 : kind === 'awakening-acquired' || kind.startsWith('campaign-') || kind === 'nexus-shield-break' ? .8 : kind.startsWith('cargo-') ? .3 : kind === 'star-pin' ? .1 : kind.startsWith('starline-') ? .15 : kind === 'awakening-trigger' ? .12 : kind === 'anchor-break' ? .18 : kind === 'evolution-trigger' ? .12 : kind === 'tactic-trigger' || kind === 'rift-node' ? .18 : kind === 'secret-trigger' ? .12 : kind === 'secret-discovered' ? .8 : kind === 'relic-trigger' ? .18 : kind === 'phase-mark' ? .075 : kind === 'phase-capture' ? .055 : kind === 'phase-burst' || kind === 'grenade-burst' ? .065 : kind === 'hazard-burst' ? .08 : kind === 'sector-warning' ? .7 : kind === 'boss-attack' ? .45 : kind === 'combo' ? .1 : 0;
         if (spacing && this.context.currentTime - (this.lastPlayed[kind] ?? -Infinity) < spacing) return;
         this.lastPlayed[kind] = this.context.currentTime;
         switch (kind) {
@@ -66,12 +143,57 @@
             else if (weapon === 1) { this.noiseBurst(1300, .20, .26); this.note(105, 28, .24, .23, 'triangle'); }
             else if (weapon === 3) { this.note(135, 43, .23, .19, 'triangle'); this.noiseBurst(720, .11, .16); this.note(330, 110, .13, .06); }
             else if (weapon === 4) { this.noiseBurst(3900, .13, .07, true); this.note(1350, 480, .2, .08, 'triangle'); this.note(730, 350, .18, .04, 'sine', .03); }
+            else if (weapon === 5) { this.noiseBurst(4200, .035, .065, true); this.note(760, 300, .115, .065, 'triangle'); this.note(1520, 760, .085, .025, 'sine', .02); }
             else { this.noiseBurst(3600, .06, .11, true); this.note(940, 125, .24, .11, 'sawtooth'); this.note(100, 28, .20, .16); }
             break;
           case 'grenade-burst': this.note(105, 27, .38, .24, 'triangle'); this.noiseBurst(950, .28, .2); this.note(260, 58, .23, .06, 'sawtooth'); break;
+          case 'voyage-room': this.note(220, 440, .3, .035, 'triangle'); this.note(660, 880, .22, .025, 'sine', .12); break;
+          case 'voyage-objective': this.note(880, 1320, .15, .025, 'sine'); break;
+          case 'voyage-rest': case 'voyage-room-complete': [330, 495, 660].forEach((f, i) => this.note(f, f, .32, .03, 'sine', i * .09)); break;
+          case 'voyage-complete': [330, 440, 660, 880, 1320].forEach((f, i) => this.note(f, f, .5, .04, 'triangle', i * .12)); break;
+          case 'voyage-boss-phase': this.note(165, 330, .26, .04, 'triangle'); this.note(495, 660, .27, .03, 'sine', .09); break;
+          case 'voyage-boss-teleport': this.note(660, 330, .13, .03, 'sine'); this.note(990, 1320, .14, .025, 'triangle', .09); break;
+          case 'voyage-device':
+            if (weapon === 'afterimage') this.note(740, 370, .17, .025, 'sine');
+            else if (weapon === 'needles') { this.note(1100, 880, .065, .025, 'triangle'); this.note(1320, 990, .07, .025, 'triangle', .03); }
+            else if (weapon === 'mirror') { this.note(990, 1485, .11, .025, 'sine'); this.note(1485, 1980, .1, .02, 'sine', .04); }
+            else if (weapon === 'sentry') this.note(880, 440, .1, .03, 'triangle');
+            else if (weapon === 'well') { this.note(110, 330, .25, .035, 'triangle'); this.note(660, 330, .18, .02, 'sine', .07); }
+            else if (weapon === 'battery') { this.note(330, 660, .14, .025, 'triangle'); this.note(990, 990, .13, .02, 'sine', .06); }
+            break;
+          case 'voyage-resonance': {
+            const root = { 'tail-collapse': 392, 'cross-mirror': 440, 'tidal-collapse': 330 }[weapon] || 392;
+            [1, 1.5, 2].forEach((ratio, i) => this.note(root * ratio, root * ratio, .26, .035, 'triangle', i * .07)); break;
+          }
+          case 'cargo-picked': this.note(330, 660, .2, .04, 'triangle'); this.note(990, 990, .18, .03, 'sine', .08); break;
+          case 'cargo-dropped': this.note(660, 330, .14, .035, 'triangle'); this.noiseBurst(1800, .045, .025); break;
+          case 'cargo-delivered': [392, 587, 784, 1174].forEach((f, i) => this.note(f, f, .35, .035, 'sine', i * .07)); break;
+          case 'star-pin': this.note(1450, 850, .065, .022, 'triangle'); break;
+          case 'starline-created': this.note(660, 1320, .14, .03, 'sine'); this.note(990, 1485, .13, .025, 'triangle', .03); break;
+          case 'starline-trigger': this.note(940, 470, .09, .035, 'triangle'); this.noiseBurst(2900, .035, .025, true); if (weapon === 'capture') this.note(1760, 2200, .07, .02, 'sine'); break;
+          case 'starline-capture': this.note(1760, 2200, .09, .02, 'sine'); this.note(880, 1320, .07, .018, 'triangle', .025); break;
           case 'hazard-burst': this.note(125, 42, .25, .13, 'triangle'); this.noiseBurst(1800, .18, .1); break;
           case 'sector-warning': this.note(640, 640, .13, .07, 'triangle'); this.note(480, 480, .21, .065, 'triangle', .18); break;
           case 'boss-attack': this.note(220, 330, .22, .095, 'triangle'); this.note(190, 285, .24, .09, 'triangle', .25); this.note(880, 660, .15, .025, 'sine', .02); break;
+          case 'conduction-charge': this.note(440 + weapon * 110, 880 + weapon * 110, .18, .05, 'triangle'); this.note(1320, 1320, .28, .035, 'sine', .12); break;
+          case 'boss-backlash': this.noiseBurst(2600, .22, .12); this.note(110, 55, .35, .1, 'triangle'); [660, 990, 1320].forEach((f, i) => this.note(f, f, .3, .035, 'sine', .06 + i * .08)); break;
+          case 'campaign-rest': [262, 330, 392].forEach((f, i) => this.note(f, f, .4, .04, 'sine', i * .09)); break;
+          case 'campaign-stage': this.note(165, 660, .42, .045, 'triangle'); this.note(495, 990, .32, .025, 'sine', .12); break;
+          case 'campaign-complete': [262, 392, 523, 659, 784].forEach((f, i) => this.note(f, f, .6, .045, 'triangle', i * .13)); break;
+          case 'anchor-break': this.noiseBurst(3800, .13, .055, true); this.note(1320, 440, .25, .045, 'sine'); break;
+          case 'nexus-shield-break': this.note(196, 49, .35, .07, 'triangle'); [523, 784, 1046].forEach((f, i) => this.note(f, f, .35, .04, 'sine', .08 + i * .09)); break;
+          case 'awakening-acquired': [330, 440, 660].forEach((f, i) => this.note(f, f, .38, .045, 'triangle', i * .11)); break;
+          case 'awakening-trigger':
+            if (weapon === 'return') this.note(740, 370, .15, .03, 'triangle');
+            else if (weapon === 'slide') { this.noiseBurst(3900, .045, .025, true); this.note(480, 720, .09, .025); }
+            else if (weapon === 'relay-ready') { this.note(660, 990, .12, .025); this.note(1320, 1320, .1, .02, 'sine', .06); }
+            else if (weapon === 'relay') this.note(330, 660, .13, .035, 'triangle');
+            else if (weapon === 'interrupt') { this.note(1100, 550, .075, .025, 'triangle'); this.noiseBurst(3300, .035, .025, true); }
+            else if (weapon === 'field') this.note(392, 784, .2, .03, 'sine');
+            else if (weapon === 'field-capture') this.note(1175, 1568, .065, .018, 'sine');
+            else if (weapon === 'charge') this.note(196, 392, .18, .035, 'triangle');
+            else if (weapon === 'release') this.note(880, 440, .15, .03, 'triangle');
+            break;
           case 'hit': this.noiseBurst(2400, .03, .045, true); break;
           case 'critical': this.note(980, 680, .065, .065, 'triangle'); break;
           case 'kill': this.note(240, 115, .09, .065, 'triangle'); break;
@@ -79,6 +201,33 @@
           case 'reload-complete': this.note(650, 440, .08, .06, 'triangle'); break;
           case 'reload-perfect': this.note(660, 660, .13, .07, 'triangle'); this.note(990, 990, .23, .08, 'triangle', .08); break;
           case 'reload-miss': this.note(160, 100, .13, .05, 'triangle'); break;
+          case 'weapon-evolved': [330, 495, 660, 990].forEach((f, i) => this.note(f, f, .45, .055, 'triangle', i * .1)); break;
+          case 'evolution-trigger':
+            if (weapon === 'primed') { this.note(440, 880, .16, .045, 'triangle'); }
+            else if (weapon === 'breach') { this.note(160, 40, .22, .065, 'triangle'); }
+            else if (weapon === 'ricochet') { this.note(1800, 900, .12, .04, 'sine'); }
+            else if (weapon === 'echo') { this.note(180, 45, .24, .075, 'triangle'); this.noiseBurst(1600, .13, .04); }
+            else if (weapon === 'twin') { this.note(980, 1470, .14, .025, 'sine'); }
+            break;
+          case 'rift-start': this.note(196, 392, .36, .07, 'triangle'); this.note(588, 784, .24, .04, 'sine', .12); break;
+          case 'rift-node': this.note(784, 1176, .13, .05, 'sine'); this.note(1568, 1568, .14, .025, 'sine', .06); break;
+          case 'rift-ready': [392, 523, 784, 1046].forEach((f, i) => this.note(f, f, .32, .045, 'triangle', i * .09)); break;
+          case 'rift-failed': this.note(392, 196, .34, .055, 'triangle'); this.note(262, 131, .35, .035, 'sine', .12); break;
+          case 'tactic-trigger':
+            if (weapon === 'decoy-dash') { this.note(440, 880, .16, .035, 'sine'); this.note(660, 990, .18, .025, 'sine', .05); }
+            else if (weapon === 'reload-mine') { this.note(148, 58, .18, .055, 'triangle'); this.note(880, 660, .06, .025); }
+            else { this.note(110, 440, .26, .045, 'triangle'); this.note(660, 220, .2, .025, 'sine', .05); }
+            break;
+          case 'relic-trigger': this.note(740, 990, .12, .045, 'triangle'); this.note(1110, 1320, .18, .04, 'sine', .07); break;
+          case 'secret-trigger':
+            if (weapon === 'rebound') { this.noiseBurst(4500, .05, .045, true); this.note(1550, 780, .12, .045, 'triangle'); }
+            else if (weapon === 'blade-relay') { this.note(660, 1320, .15, .05, 'triangle'); this.note(990, 1980, .1, .03, 'sine', .04); }
+            else if (weapon === 'bullet-reversal') { this.note(130, 900, .2, .06, 'triangle'); this.noiseBurst(2900, .12, .045, true); }
+            else if (weapon === 'fuse-resonance') { this.note(220, 640, .11, .045, 'triangle'); this.note(880, 440, .12, .035, 'sine', .045); }
+            else if (weapon === 'rail-resonance') { this.note(2100, 600, .14, .025, 'sawtooth'); this.note(880, 1760, .08, .035); }
+            else if (weapon === 'ice-break') { this.noiseBurst(4200, .11, .06, true); this.note(1800, 660, .16, .04, 'triangle'); }
+            break;
+          case 'secret-discovered': [392, 587.33, 784].forEach((f, i) => this.note(f, f, .85, .045, 'sine', i * .12)); break;
           case 'dash': this.noiseBurst(1900, .16, .09); this.note(350, 80, .16, .07); break;
           case 'phase-mark': this.note(580, 1040, .095, .055, 'triangle'); this.note(1160, 1560, .08, .02, 'sine', .025); break;
           case 'phase-capture': this.note(960, 1550, .11, .045); this.note(220, 330, .09, .035, 'triangle'); break;

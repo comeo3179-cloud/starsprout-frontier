@@ -12,6 +12,11 @@ reports/
 # 平台托管配置与本地工具配置
 .openai/
 .claude/
+.npm-cache/
+.zcode/
+.env
+.env.*
+.npmrc
 
 # 打包归档
 *.zip
@@ -19,8 +24,11 @@ reports/
 *.tar.gz
 
 # 质量检查与发布脚本：硬编码本机 Playwright 缓存路径与线上发布环境 ID，
-# 在其它机器上必然报错，因此不随仓库分发。仅scripts/simulate-expedition.js可移植。
+# 不随仓库分发；可移植的模拟和检查入口按需纳入仓库。
 scripts/build-web.cjs
+scripts/build-cloud-sdk.cjs
+scripts/check-coach-visibility.cjs
+scripts/check-voyage-browser-run.cjs
 scripts/check-phase-ui.cjs
 scripts/check-sectors-ui.cjs
 scripts/check-threats-ui.cjs
