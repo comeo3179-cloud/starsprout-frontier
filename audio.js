@@ -6,6 +6,11 @@
     combat: { bpm: 104, melody: [69, 72, 76, 72, 79, 76, 72, 67, 69, 72, 76, 81, 79, 76, 72, 71], roots: [45, 41, 48, 43], thirds: [3, 4, 4, 4], lead: 'triangle' },
     boss: { bpm: 122, melody: [71, 74, 77, 74, 83, 77, 74, 71, 72, 76, 79, 76, 84, 79, 76, 74], roots: [47, 43, 48, 42], thirds: [3, 4, 4, 3], lead: 'triangle' }
   };
+  const VOYAGE_MUSIC = {
+    'voyage-cosmos': { shift: 7, offset: 0, lead: 'sine', bassEvery: 2 },
+    'voyage-forge': { shift: -5, offset: 4, lead: 'triangle', bassEvery: 2 },
+    'voyage-tide': { shift: 2, offset: 8, lead: 'sine', bassEvery: 4 }
+  };
   class FrontierAudio {
     constructor() {
       this.enabled = true; this.context = null; this.voices = 0; this.lastPlayed = Object.create(null);
@@ -56,11 +61,11 @@
     }
 
     _musicBeat(score, step, at) {
-      const shift = { foundry: -2, frost: 5, storm: 2, ruins: 7, voyage: 7 }[this.musicMap] || 0;
-      const bar = Math.floor(step / 8) % score.roots.length, root = score.roots[bar] + shift, lead = score.melody[step % score.melody.length], interval = 30 / score.bpm;
+      const voyage = VOYAGE_MUSIC[this.musicMap], shift = voyage?.shift ?? ({ foundry: -2, frost: 5, storm: 2, ruins: 7, voyage: 7 }[this.musicMap] || 0);
+      const bar = Math.floor(step / 8) % score.roots.length, root = score.roots[bar] + shift, lead = score.melody[(step + (voyage?.offset || 0)) % score.melody.length], interval = 30 / score.bpm;
       if (step % 8 === 0) for (const offset of [0, score.thirds[bar], 7]) this._musicNote(root + 12 + offset, at, interval * 5.5, .021, 'sine');
-      if (step % (this.musicScene === 'explore' ? 4 : 2) === 0) this._musicNote(root, at, interval * 1.4, .06, 'triangle');
-      if (lead) this._musicNote(lead + shift, at, interval * .72, this.musicScene === 'explore' ? .035 : .045, score.lead);
+      if (step % (this.musicScene === 'explore' ? 4 : this.musicScene === 'boss' ? 2 : voyage?.bassEvery || 2) === 0) this._musicNote(root, at, interval * 1.4, .06, 'triangle');
+      if (lead) this._musicNote(lead + shift, at, interval * .72, this.musicScene === 'explore' ? .035 : .045, voyage?.lead || score.lead);
       if (this.musicScene !== 'explore' && step % 2 === 0) this._musicNote(35, at, .10, .045, 'sine', 23);
       if (this.musicScene === 'boss' && step % 4 === 2) this._musicNote(86, at, .055, .018, 'triangle', 62);
     }
@@ -134,10 +139,23 @@
         this.unlocked = true;
         if (this.context.state === 'suspended') this.context.resume()?.then(() => this._syncMusic()).catch(() => {});
         this._syncMusic();
-        const spacing = kind.startsWith('voyage-') ? kind === 'voyage-device' ? .12 : .4 : kind === 'awakening-acquired' || kind.startsWith('campaign-') || kind === 'nexus-shield-break' ? .8 : kind.startsWith('cargo-') ? .3 : kind === 'star-pin' ? .1 : kind.startsWith('starline-') ? .15 : kind === 'awakening-trigger' ? .12 : kind === 'anchor-break' ? .18 : kind === 'evolution-trigger' ? .12 : kind === 'tactic-trigger' || kind === 'rift-node' ? .18 : kind === 'secret-trigger' ? .12 : kind === 'secret-discovered' ? .8 : kind === 'relic-trigger' ? .18 : kind === 'phase-mark' ? .075 : kind === 'phase-capture' ? .055 : kind === 'phase-burst' || kind === 'grenade-burst' ? .065 : kind === 'hazard-burst' ? .08 : kind === 'sector-warning' ? .7 : kind === 'boss-attack' ? .45 : kind === 'combo' ? .1 : 0;
+        const spacing = kind.startsWith('field-') ? kind === 'field-burst' ? .08 : .18 : kind === 'cover-break' ? .1 : kind === 'shield-block' ? .075 : kind === 'shield-open' || kind === 'breacher-crash' ? .2 : kind.startsWith('voyage-') ? kind === 'voyage-device' ? .12 : .4 : kind === 'awakening-acquired' || kind.startsWith('campaign-') || kind === 'nexus-shield-break' ? .8 : kind.startsWith('cargo-') ? .3 : kind === 'star-pin' ? .1 : kind.startsWith('starline-') ? .15 : kind === 'awakening-trigger' ? .12 : kind === 'anchor-break' ? .18 : kind === 'evolution-trigger' ? .12 : kind === 'tactic-trigger' || kind === 'rift-node' ? .18 : kind === 'secret-trigger' ? .12 : kind === 'secret-discovered' ? .8 : kind === 'relic-trigger' ? .18 : kind === 'phase-mark' ? .075 : kind === 'phase-capture' ? .055 : kind === 'phase-burst' || kind === 'grenade-burst' ? .065 : kind === 'hazard-burst' ? .08 : kind === 'sector-warning' ? .7 : kind === 'boss-attack' ? .45 : kind === 'combo' ? .1 : 0;
         if (spacing && this.context.currentTime - (this.lastPlayed[kind] ?? -Infinity) < spacing) return;
         this.lastPlayed[kind] = this.context.currentTime;
         switch (kind) {
+          case 'field-arm': {
+            const friendly = String(weapon).includes('friendly'), mine = String(weapon).includes('mine');
+            this.note(friendly ? 660 : mine ? 330 : 260, friendly ? 880 : 440, .10, .035, friendly ? 'sine' : 'triangle');
+            this.note(friendly ? 990 : 550, friendly ? 1320 : 470, .065, .025, 'sine', .085); break;
+          }
+          case 'field-burst':
+            this.note(125, 35, .24, .12, 'triangle'); this.noiseBurst(1000, .16, .09);
+            if (String(weapon).includes('friendly')) this.note(880, 660, .17, .025, 'sine', .035); break;
+          case 'field-capture': [440, 660, 990].forEach((f, i) => this.note(f, f, .18, .028, 'sine', i * .045)); break;
+          case 'cover-break': this.noiseBurst(1700, .12, .085); this.note(150, 43, .18, .065, 'triangle'); break;
+          case 'shield-block': this.note(1250, 750, .045, .025, 'triangle'); this.note(1950, 1100, .055, .015, 'sine'); break;
+          case 'shield-open': this.note(980, 310, .11, .035, 'triangle'); this.note(660, 990, .18, .03, 'sine', .04); break;
+          case 'breacher-crash': this.noiseBurst(950, .13, .075); this.note(95, 32, .21, .075, 'triangle'); this.note(480, 380, .09, .015, 'sine', .045); break;
           case 'shot':
             if (weapon === 0) { this.noiseBurst(1900, .065, .14); this.note(165, 48, .11, .14, 'triangle'); }
             else if (weapon === 1) { this.noiseBurst(1300, .20, .26); this.note(105, 28, .24, .23, 'triangle'); }

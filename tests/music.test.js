@@ -101,3 +101,17 @@ test('late timer wakeups skip the backlog and do not create a long burst of queu
   assert.ok(f.audio.context.nodes.length - before <= 12, 'A late wakeup schedules at most one musical step and its small chord');
   const active = [...f.audio.musicVoices]; assert.ok(active.length > 0); assert.ok(active.every(node => node.started >= 60)); assert.equal(f.timers.size, 1);
 });
+
+test('actual voyage map IDs have distinct musical phrases while keeping one bounded scheduler', () => {
+  for (const scene of ['explore', 'combat', 'boss']) {
+    const signatures = new Set();
+    for (const mapId of ['voyage-cosmos', 'voyage-forge', 'voyage-tide']) {
+      const f = fixture(); f.audio.setScene(scene, mapId); f.audio.play('click');
+      for (let i = 0; i < 150; i++) { f.tick(60); f.audio.setScene(scene, mapId); assert.equal(f.timers.size, 1); assert.ok(f.audio.musicVoices.size <= 12); assert.ok(f.audio.voices <= 48); }
+      const notes = f.audio.context.nodes.filter(node => node.frequency && node.started !== undefined && node.started > .01);
+      signatures.add(JSON.stringify(notes.slice(0, 40).map(node => [node.type, node.started, node.frequency.calls[0][1]])));
+      f.audio.setScene('silent'); f.tick(100); assert.equal(f.timers.size, 0); assert.equal(f.audio.musicVoices.size, 0);
+    }
+    assert.equal(signatures.size, 3);
+  }
+});

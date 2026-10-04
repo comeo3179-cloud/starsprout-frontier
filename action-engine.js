@@ -145,11 +145,21 @@
     charger: { hp: 88, speed: 105, radius: 19, damage: 14, xp: 10 },
     tank: { hp: 225, speed: 56, radius: 29, damage: 18, xp: 20 },
     mortar: { hp: 108, speed: 61, radius: 23, damage: 18, xp: 14 },
+    bulwark: { hp: 160, speed: 62, radius: 24, damage: 12, xp: 18 },
+    breacher: { hp: 135, speed: 86, radius: 22, damage: 15, xp: 18 },
+    engineer: { hp: 100, speed: 66, radius: 20, damage: 11, xp: 14 },
     nest: { hp: 310, speed: 0, radius: 34, damage: 5, xp: 24 },
     reactor: { hp: 900, speed: 0, radius: 42, damage: 0, xp: 0 },
     anchor: { hp: 360, speed: 0, radius: 28, damage: 0, xp: 0 },
     boss: { hp: 3200, speed: 65, radius: 58, damage: 23, xp: 0 }
   };
+  const BATTLEFIELD_GUIDE = [
+    { id: 'bulwark', title: '棱盾卫', icon: '◐', category: '破阵敌人', description: '前方棱盾抵消 55% 弹丸伤害，转盾需要时间。侧移或冲刺绕背；EMP 使盾敞开 2.5 秒，三弹齐射后也有短暂空隙。范围爆破与相位引爆不受前盾阻挡。' },
+    { id: 'breacher', title: '破岩兽', icon: '➶', category: '破阵敌人', description: '锁定方向后直线冲锋。诱它撞上真正的岩石，会眩晕 1.35 秒并承受更多伤害；碎裂掩体会一同破坏。' },
+    { id: 'engineer', title: '投雷工兵', icon: '✹', category: '破阵敌人', description: '锁定旧位置投雷，落地前有提示。感应雷可射爆，EMP 可接管成不伤自己的友方爆破；工兵倒下后已落地的雷仍存在。' },
+    { id: 'capacitor', title: '电容筒', icon: 'ϟ', category: '战场物件', description: '射击引爆有 0.65 秒预警，会伤害敌我双方。EMP 接管后安全爆破；完整岩石能挡住雷与电容爆炸，注意预警边界。' },
+    { id: 'fragile', title: '碎裂掩体', icon: '◇', category: '战场物件', description: '裂纹掩体可被武器、爆破或破岩兽撞碎。破坏后碰撞和射线同时开放；普通岩石仍然坚固。' }
+  ];
 
   class Game {
     constructor(options = {}) {
@@ -165,6 +175,7 @@
       this.trial = null;
       this.campaign = null;
       this.voyage = null;
+      this.battlefield = null;
       this.map = MAPS.find(map => map.id === mapId) || MAPS[0];
       this.nextId = idBase;
       this.phase = 'ready';
@@ -305,7 +316,8 @@
         });
       });
       this.voyage = { seed, difficulty, initialDeviceId: deviceId, node: 1, totalNodes: 7, status: 'combat', plans, devices: [deviceId, null, null],
-        history: [], routeChoices: [], deviceChoices: [], shopChoices: [], purchased: false, room: null, effects: null };
+        history: [], routeChoices: [], deviceChoices: [], shopChoices: [], purchased: false, room: null, effects: null,
+        fieldStats: { fractures: 0, detonations: 0, captures: 0 } };
       this._clearVoyageEffects();
       this._configureVoyageRoom(plans[0][0]);
     }
@@ -318,6 +330,7 @@
 
     _configureVoyageRoom(route) {
       const voyage = this.voyage, biome = VOYAGE_BIOMES.find(item => item.id === route.biome), definition = VOYAGE_ROOMS.find(item => item.id === route.type);
+      this.battlefield = null;
       this.map = { id: 'voyage-' + route.biome, name: biome.title, subtitle: route.type === 'finale' ? '航界终局' : definition.title, mode: 'voyage',
         color: biome.color, objectiveLabel: '航路节点', description: route.description, briefing: route.description,
         boss: { name: '航界吞星者', subtitle: '穿过弹环缺口，横移躲光栅，旧位坍缩锁定后持续走位', color: '#d8b8ff' },
@@ -336,6 +349,10 @@
       const quota = route.type === 'finale' ? 0 : Math.ceil((12 + (voyage.node - 1) * 2 + (route.risk === 'surge' ? 4 : 0)) * difficulty.quota);
       const pool = voyage.node < 3 ? ['crawler', 'spitter', 'crawler', 'charger'] : voyage.node < 5 ? ['crawler', 'spitter', 'charger', 'crawler', 'tank'] : ['crawler', 'spitter', 'charger', 'tank', 'mortar', 'crawler'];
       const plan = Array.from({ length: quota }, (_, index) => pool[(index + voyage.seed % pool.length + voyage.node) % pool.length]);
+      if (voyage.node >= 3 && voyage.node <= 6) {
+        const specialists = ['bulwark', 'breacher', 'engineer'];
+        for (const [slot, index] of [3, 9].entries()) plan[index] = specialists[(voyage.seed + voyage.node + slot) % specialists.length];
+      }
       const room = { id: route.id, type: route.type, biome: route.biome, risk: route.risk, title: route.title, elapsed: 0,
         spawned: 0, quota, kills: 0, plan, spawnTimer: 2.5, hazardTimer: 8, cores: [], collectors: [], portals, objectiveDone: false,
         exit: { id: this._id(), type: 'voyage-exit', x: 850, y: 1050, radius: 36, ready: false }, status: 'combat', reward: route.reward };
@@ -353,6 +370,7 @@
           x: x + ((voyage.seed + voyage.node * 11 + index * 7) % 17 - 8), y: y + ((voyage.seed + voyage.node * 5 + index * 11) % 17 - 8),
           radius: 30 + index % 3 * 4, variant: index % 3 }))
         .filter(rock => !protectedPoints.some(point => distance(rock, point) < rock.radius + (point.radius || 65) + 22));
+      if (voyage.node >= 3 && voyage.node <= 6) this._configureBattlefield();
       if (route.type === 'siege') for (const point of points) {
         const core = this.spawnEnemy('reactor', point);
         Object.assign(core, { hp: 260, maxHp: 260, voyageCore: true, voyageRoomId: room.id, name: '共鸣柱', color: biome.color });
@@ -368,6 +386,118 @@
       }
       this._emit('voyage-room', this.player, { node: voyage.node, roomId: room.id, roomType: room.type, biome: room.biome, risk: room.risk, title: room.title, color: biome.color });
       this._objective();
+    }
+
+    _configureBattlefield() {
+      this.battlefield = { props: [], mines: [], fractures: 0, detonations: 0, captures: 0 };
+      const positions = [{ x: 550, y: 760 }, { x: 1150, y: 760 }];
+      for (const point of positions) {
+        if (this.obstacles.some(rock => distance(rock, point) < rock.radius + 38)) continue;
+        this.battlefield.props.push({ id: this._id(), kind: 'capacitor', ...point, radius: 20, hp: 50, maxHp: 50,
+          status: 'idle', friendly: false, remaining: 0, duration: 0, blastRadius: 125, damageEnemy: 140, damagePlayer: 22 });
+      }
+      this.obstacles.filter(rock => distance(rock, this.player) > 260 &&
+        !positions.some(point => distance(rock, point) < rock.radius + 90)).slice(0, 3)
+        .forEach(rock => Object.assign(rock, { fragile: true, hp: 95, maxHp: 95 }));
+    }
+
+    _fieldCount(name) {
+      this.battlefield[name]++;
+      if (this.voyage) this.voyage.fieldStats[name]++;
+    }
+
+    _damageCover(rock, amount) {
+      if (this.phase !== 'playing' || !rock.fragile || rock.hp <= 0) return false;
+      rock.hp = Math.max(0, rock.hp - amount);
+      if (rock.hp > 0) return false;
+      this.obstacles = this.obstacles.filter(item => item.id !== rock.id);
+      this.terrainRevision = (this.terrainRevision || 0) + 1;
+      if (this.battlefield) this._fieldCount('fractures');
+      this._emit('cover-break', rock, { rockId: rock.id, radius: rock.radius + 15, color: '#c8ead8' });
+      return true;
+    }
+
+    _armField(field, friendly = false, delay = .65) {
+      if (this.phase !== 'playing' || field.status === 'spent') return false;
+      const changed = friendly && !field.friendly;
+      if (field.status === 'armed') {
+        if (!changed) return false;
+        field.remaining = Math.min(field.remaining, delay);
+      } else { field.status = 'armed'; field.remaining = delay; }
+      field.friendly = field.friendly || friendly;
+      field.duration = field.remaining;
+      this._emit(changed ? 'field-capture' : 'field-arm', field, { kind: field.kind, fieldId: field.id, friendly: field.friendly,
+        radius: field.blastRadius, duration: field.duration, color: field.friendly ? '#86ffe1' : '#ffc18a' });
+      if (changed) this._fieldCount('captures');
+      return true;
+    }
+
+    _captureBattlefield(origin, radius) {
+      if (!this.battlefield || this.phase !== 'playing') return;
+      for (const field of [...this.battlefield.props, ...this.battlefield.mines]) {
+        if (field.status === 'spent' || distance(origin, field) > radius + field.radius ||
+          this.obstacles.some(rock => this._segmentHit(origin.x, origin.y, field.x - origin.x, field.y - origin.y, rock, 0) !== null)) continue;
+        this._armField(field, true, .35);
+      }
+    }
+
+    _spawnMine(origin, engineerId) {
+      if (!this.battlefield || this.phase !== 'playing' || this.battlefield.mines.length >= 12 ||
+        this.battlefield.mines.filter(item => item.engineerId === engineerId && item.status !== 'spent').length >= 2) return null;
+      if (this.obstacles.some(rock => distance(rock, origin) < rock.radius + 11)) return null;
+      const mine = { id: this._id(), kind: 'mine', x: clamp(origin.x, 35, this.world.width - 35), y: clamp(origin.y, 35, this.world.height - 35),
+        radius: 11, hp: 1, maxHp: 1, engineerId, settleTimer: .65, lifetime: 14, status: 'idle', friendly: false,
+        remaining: 0, duration: 0, blastRadius: 125, damageEnemy: 140, damagePlayer: 22 };
+      this.battlefield.mines.push(mine);
+      return mine;
+    }
+
+    _updateBattlefield(dt) {
+      if (!this.battlefield || this.phase !== 'playing') return;
+      for (const field of [...this.battlefield.props, ...this.battlefield.mines]) {
+        if (this.phase !== 'playing') break;
+        if (field.status === 'spent') continue;
+        if (field.status === 'armed') {
+          field.remaining = Math.max(0, field.remaining - dt);
+          if (field.remaining > 0) continue;
+          field.status = 'spent';
+          const blockers = [...this.obstacles];
+          const visible = target => !blockers.some(rock => rock.id !== target.id && this._segmentHit(field.x, field.y, target.x - field.x, target.y - field.y, rock, 0) !== null);
+          this._fieldCount('detonations');
+          this._emit('field-burst', field, { kind: field.kind, fieldId: field.id, friendly: field.friendly,
+            radius: field.blastRadius, damage: field.damageEnemy, color: field.friendly ? '#86ffe1' : '#ffc18a' });
+          if (!field.friendly && distance(field, this.player) <= field.blastRadius + this.player.radius && visible(this.player))
+            this._damagePlayer(field.damagePlayer, { kind: 'environment', name: field.kind === 'mine' ? '工兵感应雷' : '电容筒爆破', hint: '射爆会伤害双方；移出预警圈、躲在完整掩体后，或先用 EMP 接管。' });
+          for (const enemy of this.enemies) {
+            if (this.phase !== 'playing') break;
+            if (enemy.hp > 0 && distance(field, enemy) <= field.blastRadius + enemy.radius && visible(enemy))
+              this._damageEnemy(enemy, field.damageEnemy * (enemy.type === 'boss' ? .5 : 1));
+          }
+          for (const rock of blockers) {
+            if (this.phase !== 'playing') break;
+            if (rock.fragile && distance(field, rock) <= field.blastRadius + rock.radius && visible(rock)) this._damageCover(rock, field.damageEnemy);
+          }
+        } else if (field.kind === 'mine') {
+          field.settleTimer = Math.max(0, field.settleTimer - dt);
+          field.lifetime -= dt;
+          if (field.lifetime <= 0) field.status = 'spent';
+          else if (field.settleTimer === 0 && distance(field, this.player) <= 70 + this.player.radius) this._armField(field);
+        }
+      }
+      this.battlefield.mines = this.battlefield.mines.filter(field => field.status !== 'spent');
+    }
+
+    _clearBattlefield() {
+      if (!this.battlefield) return;
+      this.battlefield.props = []; this.battlefield.mines = [];
+    }
+
+    _fieldDamage(enemy, bullet) {
+      if (enemy.type !== 'bulwark' || enemy.shieldOpenTimer > 0) return bullet.damage;
+      const length = vectorLength(bullet.vx, bullet.vy);
+      if (!length || (-bullet.vx * Math.cos(enemy.shieldAngle) - bullet.vy * Math.sin(enemy.shieldAngle)) / length < .5 - 1e-9) return bullet.damage;
+      this._emit('shield-block', enemy, { enemyId: enemy.id, angle: enemy.shieldAngle, color: '#9ad6ff' });
+      return bullet.damage * .45;
     }
 
     _voyageSpawnPoint(type) {
@@ -723,6 +853,7 @@
     _clearCampaignCombat() {
       this.enemies = []; this.bullets = []; this.hazards = []; this.pickups = []; this.echoBursts = [];
       this._clearStarline(); this.delivery = null;
+      this._clearBattlefield();
       this._clearSecretTechniques();
       this.evolutionState = { breachTimer: 0, echoes: [] };
       this._clearAwakeningState();
@@ -1380,6 +1511,8 @@
       if (!this.trial && !this.voyage) this._updateSectorThreat(dt);
       this._updateHazards(dt);
       if (this.phase !== 'playing') return;
+      this._updateBattlefield(dt);
+      if (this.phase !== 'playing') return;
       this._updateBullets(dt, dashTime);
       if (this.phase !== 'playing') return;
       this._finishTrialWave();
@@ -1717,7 +1850,8 @@
       let amount = Math.min(1, dx > 0 ? (this.world.width - startX) / dx : dx < 0 ? -startX / dx : Infinity,
         dy > 0 ? (this.world.height - startY) / dy : dy < 0 ? -startY / dy : Infinity);
       let obstacleId = null;
-      for (const target of [...this.obstacles, ...this.enemies.filter(enemy => enemy.hp > 0)]) {
+      const fields = this.battlefield ? [...this.battlefield.props, ...this.battlefield.mines].filter(field => field.status === 'idle' && field.hp > 0) : [];
+      for (const target of [...this.obstacles, ...this.enemies.filter(enemy => enemy.hp > 0), ...fields]) {
         const contact = this._segmentHit(startX, startY, dx, dy, target, 3);
         if (contact !== null && contact <= amount) { amount = contact; obstacleId = target.type === 'rock' ? target.id : null; }
       }
@@ -1738,7 +1872,8 @@
         dy > 0 ? (this.world.height - startY) / dy : dy < 0 ? -startY / dy : Infinity);
       if (boundary < amount) { amount = Math.max(0, boundary); explodes = false; }
       // This is a snapshot of current silhouettes, not a prediction of enemy movement.
-      for (const target of [...this.obstacles, ...this.enemies.filter(enemy => enemy.hp > 0)]) {
+      const fields = this.battlefield ? [...this.battlefield.props, ...this.battlefield.mines].filter(field => field.status === 'idle' && field.hp > 0) : [];
+      for (const target of [...this.obstacles, ...this.enemies.filter(enemy => enemy.hp > 0), ...fields]) {
         const contact = this._segmentHit(startX, startY, dx, dy, target, 7);
         if (contact !== null && contact <= amount) { amount = contact; explodes = true; }
       }
@@ -1860,6 +1995,11 @@
       for (const enemy of this.enemies) {
         if (this.phase !== 'playing') break;
         if (enemy.hp <= 0 || distance(origin, enemy) > radius + enemy.radius) continue;
+        if (enemy.type === 'bulwark') {
+          enemy.shieldOpenTimer = 2.5;
+          this._emit('shield-open', enemy, { enemyId: enemy.id, duration: 2.5, color: '#86ffe1' });
+        }
+        if (enemy.type === 'engineer') enemy.throwTarget = null;
         enemy.stunTimer = enemy.type === 'boss' ? 0.65 : 2.1;
         enemy.windup = 0;
         enemy.chargeTimer = 0;
@@ -1868,6 +2008,7 @@
         this.hazards = this.hazards.filter(hazard => hazard.sourceId !== enemy.id);
         this._damageEnemy(enemy, damage);
       }
+      if (this.phase === 'playing') this._captureBattlefield(origin, radius);
       if (this.phase === 'playing' && this.relics.includes('echo-pulse')) this.echoBursts.push({ x: origin.x, y: origin.y, radius, damage: damage * .65, remaining: .65 });
       if (this.phase === 'playing') this._voyagePulse(origin);
       return true;
@@ -2272,6 +2413,8 @@
         windup: 0, chargeTimer: 0, chargeX: 0, chargeY: 0, stage: 1, attackCount: 0,
         recoveryTimer: 0, knockbackTimer: 0, knockbackX: 0, knockbackY: 0, attackKind: '', phaseMarkTimer: 0
       };
+      if (type === 'bulwark') Object.assign(enemy, { shieldAngle: Math.atan2(this.player.y - point.y, this.player.x - point.x), shieldOpenTimer: 0 });
+      if (type === 'engineer') enemy.throwTarget = null;
       if (type === 'boss') Object.assign(enemy, { variant: this.map.id, name: this.map.boss.name, color: this.map.boss.color, attackName: '', attackHint: '' });
       this.enemies.push(enemy);
       return enemy;
@@ -2302,6 +2445,7 @@
         if (this.phase !== 'playing') break;
         if (enemy.hp <= 0) continue;
         enemy.hitFlash = Math.max(0, (enemy.hitFlash || 0) - dt);
+        if (enemy.type === 'bulwark') enemy.shieldOpenTimer = Math.max(0, enemy.shieldOpenTimer - dt);
         if (enemy.starSlowTimer > 0) enemy.starSlowTimer = Math.max(0, enemy.starSlowTimer - dt);
         if (enemy.type === 'reactor' || enemy.type === 'anchor') continue;
         enemy.contactTimer = Math.max(0, enemy.contactTimer - dt);
@@ -2319,7 +2463,10 @@
         const target = lured ? decoy : player;
         const dx = target.x - enemy.x, dy = target.y - enemy.y, length = Math.max(1, vectorLength(dx, dy));
         enemy.angle = Math.atan2(dy, dx);
-        if (enemy.type === 'boss') this._updateBoss(enemy, dt, dx / length, dy / length, length);
+        if (enemy.type === 'bulwark') this._updateBulwark(enemy, dt, dx / length, dy / length, length);
+        else if (enemy.type === 'breacher') this._updateBreacher(enemy, dt, dx / length, dy / length, length);
+        else if (enemy.type === 'engineer') this._updateEngineer(enemy, dt, dx / length, dy / length, length);
+        else if (enemy.type === 'boss') this._updateBoss(enemy, dt, dx / length, dy / length, length);
         else if (enemy.type === 'nest') {
           if (enemy.attackTimer <= 0 && length < 720) {
             enemy.attackTimer = 6;
@@ -2407,6 +2554,66 @@
         }
       }
       this.enemies = this.enemies.filter(enemy => enemy.hp > 0);
+    }
+
+    _updateBulwark(enemy, dt, nx, ny, length) {
+      const desired = enemy.windup > 0 ? enemy.shotAngle : enemy.angle;
+      const turn = Math.atan2(Math.sin(desired - enemy.shieldAngle), Math.cos(desired - enemy.shieldAngle));
+      enemy.shieldAngle += clamp(turn, -1.5 * dt, 1.5 * dt);
+      if (enemy.windup > 0) {
+        enemy.windup = Math.max(0, enemy.windup - dt); enemy.angle = enemy.shotAngle;
+        if (enemy.windup === 0) {
+          for (const offset of [-.16, 0, .16]) this._enemyBullet(enemy, enemy.shotAngle + offset, 300, enemy.damage);
+          enemy.shieldOpenTimer = Math.max(enemy.shieldOpenTimer, 1.3); enemy.recoveryTimer = 1.2;
+          this._emit('shield-open', enemy, { enemyId: enemy.id, duration: 1.3, color: '#9ad6ff' });
+        }
+      } else if (enemy.attackTimer <= 0 && length < 620 &&
+        !this.obstacles.some(rock => this._segmentHit(enemy.x, enemy.y, nx * length, ny * length, rock, 6) !== null)) {
+        enemy.windup = .75; enemy.shotAngle = enemy.angle; enemy.attackTimer = 3.8;
+      } else this._steerMove(enemy, nx, ny, enemy.speed * (length > 300 ? 1 : length < 185 ? -.5 : 0), dt);
+    }
+
+    _updateBreacher(enemy, dt, nx, ny, length) {
+      if (enemy.windup > 0 || enemy.chargeTimer > 0) enemy.angle = Math.atan2(enemy.chargeY, enemy.chargeX);
+      if (enemy.chargeTimer > 0) {
+        const time = Math.min(dt, enemy.chargeTimer), dx = enemy.chargeX * 520 * time, dy = enemy.chargeY * 520 * time;
+        const hits = this.obstacles.map(rock => ({ rock, t: this._segmentHit(enemy.x, enemy.y, dx, dy, rock, enemy.radius) }))
+          .filter(hit => hit.t !== null).sort((a, b) => a.t - b.t);
+        if (hits.length) {
+          const hit = hits[0];
+          this._move(enemy, dx * Math.max(0, hit.t - .001), dy * Math.max(0, hit.t - .001));
+          this._damageCover(hit.rock, hit.rock.maxHp || 95);
+          enemy.chargeTimer = 0; enemy.stunTimer = 1.35; enemy.recoveryTimer = 0; enemy.attackKind = '';
+          this._emit('breacher-crash', enemy, { enemyId: enemy.id, rockId: hit.rock.id, duration: 1.35, radius: 45, color: '#ffd29a' });
+        } else {
+          this._move(enemy, dx, dy); enemy.chargeTimer = Math.max(0, enemy.chargeTimer - time);
+          if (enemy.chargeTimer === 0) { enemy.recoveryTimer = .65; enemy.attackKind = ''; }
+        }
+      } else if (enemy.windup > 0) {
+        enemy.windup = Math.max(0, enemy.windup - dt);
+        if (enemy.windup === 0) enemy.chargeTimer = .58;
+      } else if (enemy.attackTimer <= 0 && length < 430 && length > 95) {
+        enemy.windup = .8; enemy.chargeX = nx; enemy.chargeY = ny; enemy.attackKind = 'breach'; enemy.attackTimer = 4.4;
+        this._addHazard('charge', enemy.x, enemy.y, enemy.radius, .8, 0,
+          { angle: enemy.angle, length: 302, visualOnly: true, sourceId: enemy.id, color: '#ffc18a' });
+      } else this._steerMove(enemy, nx, ny, enemy.speed, dt);
+    }
+
+    _updateEngineer(enemy, dt, nx, ny, length) {
+      if (enemy.windup > 0) {
+        enemy.windup = Math.max(0, enemy.windup - dt);
+        if (enemy.windup === 0) {
+          if (enemy.throwTarget) this._spawnMine(enemy.throwTarget, enemy.id);
+          enemy.throwTarget = null; enemy.recoveryTimer = .8; enemy.attackKind = '';
+        }
+      } else if (enemy.attackTimer <= 0 && length < 650 && this.battlefield &&
+        this.battlefield.mines.length < 12 && this.battlefield.mines.filter(item => item.engineerId === enemy.id).length < 2 &&
+        !this.obstacles.some(rock => this._segmentHit(enemy.x, enemy.y, nx * length, ny * length, rock, 6) !== null)) {
+        enemy.windup = .85; enemy.attackTimer = 5.2; enemy.attackKind = 'mine';
+        enemy.throwTarget = { x: this.player.x, y: this.player.y };
+        this._addHazard('blast', enemy.throwTarget.x, enemy.throwTarget.y, 32, 1.5, 0,
+          { sourceId: enemy.id, owner: 'enemy', visualOnly: true, engineerLanding: true, color: '#ffc18a' });
+      } else this._steerMove(enemy, nx, ny, enemy.speed * (length > 380 ? 1 : length < 210 ? -.6 : 0), dt);
     }
 
     _steerMove(enemy, nx, ny, speed, dt) {
@@ -2669,7 +2876,8 @@
     }
 
     _enemyDamageSource(enemy, projectile = false) {
-      const names = { crawler: '裂隙爬行者', spitter: '孢子射手', charger: '冲锋兽', tank: '铁棘重甲', mortar: '炮击虫', nest: '孵化虫巢', boss: this.map.boss.name };
+      const names = { crawler: '裂隙爬行者', spitter: '孢子射手', charger: '冲锋兽', tank: '铁棘重甲', mortar: '炮击虫', nest: '孵化虫巢',
+        bulwark: '棱盾卫', breacher: '破岩兽', engineer: '投雷工兵', boss: this.map.boss.name };
       const charge = !projectile && enemy.chargeTimer > 0;
       const attack = enemy.type === 'boss' && (projectile || charge) ? enemy.attackName : null;
       return {
@@ -2851,6 +3059,11 @@
             if (t !== null) hits.push({ t, obstacle: true, target: rock });
           }
           if (bullet.owner === 'player') {
+            if (this.battlefield) for (const field of [...this.battlefield.props, ...this.battlefield.mines]) {
+              if (field.status !== 'idle' || field.hp <= 0 || bullet.hitIds.includes(field.id)) continue;
+              const t = this._segmentHit(bullet.x, bullet.y, dx, dy, field, bullet.radius);
+              if (t !== null) hits.push({ t, field: true, target: field });
+            }
             for (const enemy of this.enemies) {
               if (enemy.hp <= 0 || bullet.hitIds.includes(enemy.id)) continue;
               const t = this._segmentHit(bullet.x, bullet.y, dx, dy, enemy, bullet.radius);
@@ -2872,6 +3085,21 @@
           let redirected = false;
           for (const hit of hits) {
             if (this.phase !== 'playing') break;
+            if (hit.obstacle && bullet.owner === 'player' && hit.target.fragile) this._damageCover(hit.target, bullet.damage);
+            if (hit.field) {
+              if (hit.target.status !== 'idle' || hit.target.hp <= 0) continue;
+              const impact = { x: bullet.x + dx * hit.t, y: bullet.y + dy * hit.t };
+              if (bullet.kind === 'grenade') {
+                bullet.x = impact.x; bullet.y = impact.y; this._burstGrenade(bullet); break;
+              }
+              hit.target.hp = Math.max(0, hit.target.hp - bullet.damage);
+              if (hit.target.hp === 0) this._armField(hit.target);
+              this._emit('spark', impact, { color: '#ffc18a' });
+              if (bullet.kind === 'starline') this._placeStarPin(bullet, impact.x, impact.y);
+              bullet.hitIds.push(hit.target.id);
+              if (bullet.pierce > 0) { bullet.pierce--; continue; }
+              bullet.lifetime = 0; break;
+            }
             if (hit.capture) {
               bullet.x += dx * hit.t; bullet.y += dy * hit.t;
               this._capturePhaseBullet(bullet);
@@ -2955,7 +3183,7 @@
               this._extendRailCorridor(bullet, bullet.x + dx * hit.t, bullet.y + dy * hit.t);
               if (blade && bullet.returning && bullet.rockRebounded) { bullet.reboundHit = true; this._discoverSecret('rebound', hit.target); }
               this._interruptAwakening(bullet, hit.target);
-              this._damageEnemy(hit.target, bullet.damage, bullet.critical);
+              this._damageEnemy(hit.target, this._fieldDamage(hit.target, bullet), bullet.critical);
               if (this.phase !== 'playing') break;
               if (bullet.kind === 'starline') this._placeStarPin(bullet, bullet.x + dx * hit.t, bullet.y + dy * hit.t);
               this._applyAmmoEffect(bullet, hit.target);
@@ -2987,6 +3215,15 @@
       bullet.exploded = true;
       bullet.lifetime = 0;
       this._emit('grenade-burst', bullet, { radius: bullet.blastRadius, color: bullet.color });
+      if (this.battlefield) {
+        for (const field of [...this.battlefield.props, ...this.battlefield.mines]) {
+          if (field.status !== 'idle' || distance(bullet, field) > bullet.blastRadius + field.radius) continue;
+          field.hp = Math.max(0, field.hp - bullet.damage);
+          if (field.hp === 0) this._armField(field);
+        }
+        for (const rock of [...this.obstacles]) if (rock.fragile && distance(bullet, rock) <= bullet.blastRadius + rock.radius)
+          this._damageCover(rock, bullet.damage);
+      }
       for (const enemy of this.enemies) {
         if (this.phase !== 'playing') break;
         if (enemy.hp > 0 && distance(bullet, enemy) <= bullet.blastRadius + enemy.radius) {
@@ -3041,10 +3278,11 @@
 
     _damageEnemy(enemy, amount, critical = false) {
       if (this.phase !== 'playing' || enemy.hp <= 0) return;
-      const weakpoint = enemy.recoveryTimer > 0 && (enemy.type === 'tank' || enemy.type === 'boss');
+      const weakpoint = enemy.recoveryTimer > 0 && (enemy.type === 'tank' || enemy.type === 'boss') || enemy.type === 'breacher' && enemy.stunTimer > 0;
       if (enemy.type === 'boss' && enemy.variant === 'nexus' && enemy.shielded) amount *= .35;
       if (enemy.type === 'tank') amount *= weakpoint ? 1.5 : 0.8;
       else if (enemy.type === 'boss' && weakpoint) amount *= 1.15;
+      else if (enemy.type === 'breacher' && weakpoint) amount *= 1.35;
       enemy.hp -= amount;
       enemy.hitFlash = 0.08;
       this._emit('hit', enemy, { enemyId: enemy.id, targetId: enemy.id, amount: Math.round(amount), critical, weakpoint, color: critical ? '#ffe098' : weakpoint ? '#8cdcff' : '#dcfff7' });
@@ -3090,6 +3328,7 @@
         if (this.campaign) { this._finishCampaignStage(enemy); return; }
         this.phase = 'won';
         this._clearStarline(); this.delivery = null;
+        this._clearBattlefield();
         this._clearSecretTechniques();
         this.evolutionState = { breachTimer: 0, echoes: [] };
         this.tactical = { decoy: null, mine: null, cooldown: 0 };
@@ -3127,6 +3366,7 @@
           this._clearCampaignCombat(); this._clearVoyageEffects();
         }
         this._clearStarline(); this.delivery = null;
+        this._clearBattlefield();
         if (this.campaign) {
           this.campaign.status = 'failed'; this.campaign.routeChoices = []; this.campaign.supplyChoices = [];
           this._clearCampaignCombat();
@@ -3229,5 +3469,5 @@
   }
 
   return { Game, WEAPONS, UPGRADES, EVOLUTIONS, ENEMIES, RELICS, TACTICS, MAPS, SECRETS, TRIAL_WAVES, CAMPAIGN_DOCTRINES, CAMPAIGN_AWAKENINGS, CAMPAIGN_CRISES, CAMPAIGN_SUPPLIES, CAMPAIGN_NEXUS,
-    VOYAGE_DEVICES, VOYAGE_RESONANCES, VOYAGE_DIFFICULTIES, VOYAGE_ROOMS, VOYAGE_BIOMES };
+    VOYAGE_DEVICES, VOYAGE_RESONANCES, VOYAGE_DIFFICULTIES, VOYAGE_ROOMS, VOYAGE_BIOMES, BATTLEFIELD_GUIDE };
 });

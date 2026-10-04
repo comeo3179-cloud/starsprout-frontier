@@ -60,6 +60,7 @@
   let pickupToneTime = 0;
   let impactPause = 0;
   let lastBurstTone = -1;
+  let lastFieldTone = -1;
   let reactorWasReady = false;
   let visibleWeapon = -1;
   let phaseCoachSeen = false;
@@ -142,6 +143,12 @@
       }
       else if (event.type === 'grenade-burst') tone('grenade-burst');
       else if (event.type === 'hazard-burst') tone('hazard-burst');
+      else if (['field-arm', 'field-burst', 'field-capture', 'cover-break', 'shield-block', 'shield-open', 'breacher-crash'].includes(event.type)) {
+        if (game.elapsed - lastFieldTone > .12) { tone(event.type, event.friendly ? 'friendly' : event.kind); lastFieldTone = game.elapsed; }
+        if (event.type === 'field-capture') $('run-log').textContent = 'EMP 接管 · 蓝色爆破不伤你';
+        else if (event.type === 'cover-break') $('run-log').textContent = '碎裂掩体已破坏 · 射线与通路打开';
+        else if (event.type === 'shield-open') $('run-log').textContent = '棱盾敞开 · 侧后绕射，抓住破盾窗口';
+      }
       else if (['cargo-picked', 'cargo-dropped', 'cargo-delivered', 'star-pin', 'starline-created', 'starline-trigger', 'starline-capture'].includes(event.type)) {
         tone(event.type, event.clearedBullets > 0 ? 'capture' : 0);
         if (event.type === 'cargo-picked') { trackedRelayId = event.relayId; trackedContractId = trackedEncounterId = null; notify(event.message || '星火已携带 · 保持火力，送至对应接收站；冲刺会放下。'); }
@@ -277,6 +284,7 @@
     $('screen-overlay').classList.toggle('rift-screen', ['rift-guide', 'tactic'].includes(type));
     $('screen-overlay').classList.toggle('evolution-screen', type === 'evolution-guide');
     $('screen-overlay').classList.toggle('account-screen', type === 'account');
+    $('screen-overlay').classList.toggle('battlefield-screen', type === 'battlefield');
     stage.classList.toggle('account-open', type === 'account');
     $('screen-content').innerHTML = content; $('aim-reticle').style.opacity = '0';
     $('screen-content').scrollTop = 0; $('screen-overlay').scrollTop = 0;
@@ -305,7 +313,7 @@
     renderer.resize(); renderDirty = hudDirty = pointer.dirty = true;
   }
   function welcome() {
-    showScreen('welcome', '<div class="screen-kicker">STARSPROUT / 星海远航 · 5.0.1</div><h1 id="screen-title">越过七重星海，<em>让每次动作，都有回响。</em></h1><p class="screen-description">5.0「星海远航」：七段分支旅程、三种作战目标、六种装置和三组动作共鸣，迎战三阶段吞星首领。五大战区、连续远征与裂隙试炼仍可自由选择。</p><div class="sector-grid">' + Expedition.MAPS.map((map, index) => '<button class="sector-card ' + (map.id === game.map.id ? 'selected' : '') + '" data-map="' + map.id + '" aria-pressed="' + (map.id === game.map.id) + '" style="--sector-color:' + map.color + '"><small>SECTOR 0' + (index + 1) + (map.id === 'ruins' ? ' / NEW · 归星行动' : ' / 单区行动') + '</small><span class="sector-symbol">' + ['✳', '▧', '❄', 'ϟ', '◇'][index] + '</span><b>' + map.name + '</b><span>' + map.subtitle + '</span><p>' + map.description + '</p></button>').join('') + '</div><div class="sector-brief"><b>' + game.map.name + ' · 行动简报</b><p>' + game.map.briefing + '</p></div><div class="sector-intel"><span><b>战区威胁</b>' + game.map.threat.name + '</span><span><b>终局首领</b>' + game.map.boss.name + '</span></div><button class="launch-button" id="start-run">进入' + game.map.name + ' <b>↗</b></button><p class="welcome-note">' + game.map.threat.description + '</p><div class="welcome-controls"><span><kbd>W A S D</kbd>移动探索</span><span><kbd>1 — 6</kbd>切换武器</span><span><kbd>SHIFT / 空格</kbd>相位冲刺</span><span><kbd>F</kbd>星核暴走</span></div>');
+    showScreen('welcome', '<div class="screen-kicker">STARSPROUT / 破阵生态 · 6.0.0</div><h1 id="screen-title">看清破绽，<em>让战场成为你的武器。</em></h1><p class="screen-description">6.0「破阵生态」：远航中段加入棱盾卫、破岩兽与投雷工兵。绕盾射击、引敌撞岩、EMP 接管电容，亲手改变战场。</p><div class="sector-grid">' + Expedition.MAPS.map((map, index) => '<button class="sector-card ' + (map.id === game.map.id ? 'selected' : '') + '" data-map="' + map.id + '" aria-pressed="' + (map.id === game.map.id) + '" style="--sector-color:' + map.color + '"><small>SECTOR 0' + (index + 1) + (map.id === 'ruins' ? ' / NEW · 归星行动' : ' / 单区行动') + '</small><span class="sector-symbol">' + ['✳', '▧', '❄', 'ϟ', '◇'][index] + '</span><b>' + map.name + '</b><span>' + map.subtitle + '</span><p>' + map.description + '</p></button>').join('') + '</div><div class="sector-brief"><b>' + game.map.name + ' · 行动简报</b><p>' + game.map.briefing + '</p></div><div class="sector-intel"><span><b>战区威胁</b>' + game.map.threat.name + '</span><span><b>终局首领</b>' + game.map.boss.name + '</span></div><button class="launch-button" id="start-run">进入' + game.map.name + ' <b>↗</b></button><p class="welcome-note">' + game.map.threat.description + '</p><div class="welcome-controls"><span><kbd>W A S D</kbd>移动探索</span><span><kbd>1 — 6</kbd>切换武器</span><span><kbd>SHIFT / 空格</kbd>相位冲刺</span><span><kbd>F</kbd>星核暴走</span></div>');
     $('start-run').addEventListener('click', startRun);
     $('screen-content').querySelectorAll('[data-map]').forEach(button => button.addEventListener('click', () => {
       resetRun(button.dataset.map); welcome(); tone('click');
@@ -319,17 +327,30 @@
     const accountEntry = document.createElement('button'); accountEntry.id = 'open-account'; accountEntry.className = 'account-entry';
     accountEntry.addEventListener('click', openAccount); $('screen-content').querySelector('.sector-grid').before(accountEntry); updateAccountEntry();
     const riftEntry = document.createElement('button'); riftEntry.id = 'open-rifts'; riftEntry.className = 'rift-entry';
-    riftEntry.innerHTML = '<span aria-hidden="true">◈</span><span><small>EXPLORE / 裂隙遗珍</small><b>向异象深处，多走一步。</b><em>三种可选挑战 · 三枚战术模块 · 单槽择一</em></span><strong>探索 ↗</strong>';
+    riftEntry.innerHTML = '<span aria-hidden="true">◈</span><span><small>EXPLORE / 裂隙遗珍</small><b>裂隙与战术模块</b><em>三种可选挑战 · 三枚战术模块 · 单槽择一</em></span><strong>探索 ↗</strong>';
     trialEntry.before(riftEntry); riftEntry.addEventListener('click', showRiftGuide);
     const evolutionEntry = document.createElement('button'); evolutionEntry.id = 'open-evolutions'; evolutionEntry.className = 'rift-entry evolution-entry';
-    evolutionEntry.innerHTML = '<span aria-hidden="true">✧</span><span><small>NEW / 异构军械</small><b>一把进化武器，六种破局方式。</b><em>对应改造 + 4 级 · 升级时选择 · 每局限一把</em></span><strong>查看 ↗</strong>';
+    evolutionEntry.innerHTML = '<span aria-hidden="true">✧</span><span><small>NEW / 异构军械</small><b>六种武器进化</b><em>对应改造 + 4 级 · 升级时选择 · 每局限一把</em></span><strong>查看 ↗</strong>';
     riftEntry.before(evolutionEntry); evolutionEntry.addEventListener('click', showEvolutionGuide);
     const campaignEntry = document.createElement('button'); campaignEntry.id = 'campaign-entry'; campaignEntry.className = 'campaign-entry';
-    campaignEntry.innerHTML = '<span class="campaign-entry-mark" aria-hidden="true">◎</span><span><small>4.0 / 归星织网</small><b>五处战区，织出你的远征。</b><em>三种流派 · 六种觉醒 · 跨图构筑 · 中枢决战</em></span><strong>准备远征 ↗</strong>';
+    campaignEntry.innerHTML = '<span class="campaign-entry-mark" aria-hidden="true">◎</span><span><small>4.0 / 归星织网</small><b>连续远征</b><em>三幕跨图构筑 · 流派觉醒</em></span><strong>准备远征 ↗</strong>';
     $('screen-content').querySelector('.screen-description').after(campaignEntry); campaignEntry.addEventListener('click', showCampaignIntro);
     const voyageEntry = document.createElement('button'); voyageEntry.id = 'voyage-entry'; voyageEntry.className = 'campaign-entry voyage-entry';
-    voyageEntry.innerHTML = '<span class="campaign-entry-mark" aria-hidden="true">✧</span><span><small>5.0 / STARFARING · 全新旅程</small><b>七重星海，把招式组成答案。</b><em>分支航路 · 六件装置 · 三组共鸣 · 吞星决战</em></span><strong>准备起航 ↗</strong>';
-    campaignEntry.before(voyageEntry); voyageEntry.addEventListener('click', showVoyageIntro); addDisplayEntry(voyageEntry);
+    voyageEntry.innerHTML = '<span class="campaign-entry-mark" aria-hidden="true">✧</span><span><small>6.0 / STARFARING · 破阵生态</small><b>星海远航 · 破阵生态</b><em>七段分支 · 动作共鸣 · 中段环境反制</em></span><strong>准备起航 ↗</strong>';
+    campaignEntry.before(voyageEntry); voyageEntry.addEventListener('click', () => showVoyageIntro());
+    const modes = document.createElement('div'); modes.className = 'camp-mode-grid';
+    $('screen-content').querySelector('.screen-description').after(modes); modes.append(voyageEntry, campaignEntry, trialEntry);
+    const tools = document.createElement('div'); tools.className = 'camp-tools';
+    const fieldEntry = document.createElement('button'); fieldEntry.id = 'open-battlefield'; fieldEntry.className = 'secondary-button';
+    fieldEntry.textContent = '破阵战场资料'; fieldEntry.addEventListener('click', () => showBattlefieldGuide(welcome));
+    $('start-run').after(tools); tools.append(fieldEntry, evolutionEntry, riftEntry, archiveEntry);
+    tools.after(accountEntry); addDisplayEntry(modes);
+  }
+  function showBattlefieldGuide(returnTo) {
+    if (activeRevelation) return;
+    showScreen('battlefield', '<div class="screen-kicker">FIELD TACTICS / 破阵生态</div><h2 id="screen-title">把威胁，变成自己的工具。</h2><p>远航第 3–6 段出现特化敌人与可破坏物件。走位、射击、EMP 仍是你的全部操作。</p><div class="battlefield-catalog">' + Expedition.BATTLEFIELD_GUIDE.map(item => '<article class="battlefield-card" data-field-guide="' + item.id + '"><span aria-hidden="true">' + item.icon + '</span><div><small>' + item.category + '</small><h3>' + item.title + '</h3><p>' + item.description + '</p></div></article>').join('') + '</div><p class="battlefield-note">橙色预警会伤双方，蓝色接管不伤你。完整岩石能挡新筒与雷的爆炸；掩体破坏后，后续射线会改变。资料打开期间战斗安全暂停。</p><div class="menu-buttons"><button class="launch-button" id="close-battlefield">返回准备 <b>↗</b></button></div>');
+    $('close-battlefield').textContent = game.phase === 'ready' ? '返回准备 ↗' : '返回暂停 ↗';
+    $('close-battlefield').addEventListener('click', returnTo);
   }
   const voyageBiomeNames = { cosmos: '星海断层', forge: '日蚀熔炉', tide: '深潮回廊' };
   const voyageObjectiveNames = { clear: '清剿', siege: '拆柱', harvest: '收割', finale: '吞星决战' };
@@ -339,14 +360,17 @@
   function voyageDeviceCards(devices, selected = null) {
     return devices.map(item => '<button class="campaign-choice voyage-device' + (item.id === selected ? ' selected' : '') + '" data-voyage-device="' + item.id + '" aria-pressed="' + (item.id === selected) + '"><small>' + (['afterimage', 'needles'].includes(item.id) ? '冲刺系' : ['mirror', 'sentry'].includes(item.id) ? '装填系' : '脉冲系') + '</small><b>' + item.title + '</b><p>' + item.description + '</p><em>' + Expedition.VOYAGE_RESONANCES.find(pair => pair.deviceIds.includes(item.id)).title + ' · 成对激活</em></button>').join('');
   }
-  function showVoyageIntro() {
-    let deviceId = 'afterimage', difficulty = 'normal';
-    showScreen('voyage-intro', '<div class="screen-kicker">STARFARING / 5.0 · 星海远航</div><h2 id="screen-title">穿过七重星海，<em>把招式组成答案。</em></h2><p>六间分支作战房间，三种异星环境，最后迎战三阶段「航界吞星者」。每一站都保留成长，清场后亲手调整装置。</p><div class="voyage-journey">' + ['清剿启航', '分支航路', '装置共鸣', '吞星决战'].map((label, i) => '<span><small>0' + (i + 1) + '</small><b>' + label + '</b></span>').join('') + '</div><div class="trial-rules"><p><b>目标改变走位</b> 清剿有限敌群；集火三座共鸣柱；将敌人引到收割器附近，双倍充能。完成后走到出口交互离开。</p><p><b>三槽，六件，三对共鸣</b> 冲刺后回身开枪、装填后移动交叉射击，或用同一个 EMP 按键二次引爆。装置仅本局生效。</p></div><h3 class="campaign-section-title">01 / 带一件起装出发</h3><div class="voyage-device-grid">' + voyageDeviceCards(Expedition.VOYAGE_DEVICES, deviceId) + '</div><h3 class="campaign-section-title">02 / 选择航行强度</h3><div class="voyage-difficulties"><button class="campaign-choice selected" data-voyage-difficulty="normal" aria-pressed="true"><b>普通远航</b><p>熟悉目标、试验招式与装置搭配。</p></button><button class="campaign-choice" data-voyage-difficulty="overload" aria-pressed="false"><b>过载远航</b><p>普通敌人耐久与配额 +20%，敌方伤害 +12%。适合熟练开拓者。</p></button></div><label class="voyage-seed-label" for="voyage-seed">航路种子 <small>选填；相同种子复现航路，选择仍由你决定</small><input id="voyage-seed" type="text" inputmode="numeric" maxlength="10" placeholder="留空生成新航路" autocomplete="off"></label><p id="voyage-selection" class="campaign-selection" aria-live="polite"></p><div class="menu-buttons"><button class="launch-button" id="start-voyage">起航 · 第一重星海 <b>↗</b></button><button class="secondary-button" id="close-voyage-intro">返回营地</button></div><p class="campaign-note">房间之间安全整备，有限敌人不会无限刷新。刷新或关闭页面结束本局；账号同步成就与既有纪录，进行中的航路不会存档。</p>');
+  function showVoyageIntro(deviceId = 'afterimage', difficulty = 'normal', seedValue = '') {
+    showScreen('voyage-intro', '<div class="screen-kicker">STARFARING / 6.0 · 破阵生态</div><h2 id="screen-title">穿过七重星海，<em>把招式组成答案。</em></h2><p>七段分支旅程，成长与装置跨房保留。第 3–6 段可绕盾、引敌撞岩或接管电容，最后迎战三阶段「航界吞星者」。</p><div class="voyage-journey">' + ['清剿启航', '分支航路', '装置共鸣', '吞星决战'].map((label, i) => '<span><small>0' + (i + 1) + '</small><b>' + label + '</b></span>').join('') + '</div><div class="trial-rules"><p><b>目标改变走位</b> 清剿有限敌群；集火三座共鸣柱；将敌人引到收割器附近，双倍充能。完成后走到出口交互离开。</p><p><b>三槽，六件，三对共鸣</b> 冲刺后回身开枪、装填后移动交叉射击，或用同一个 EMP 按键二次引爆。装置仅本局生效。</p></div><h3 class="campaign-section-title">01 / 带一件起装出发</h3><div class="voyage-device-grid">' + voyageDeviceCards(Expedition.VOYAGE_DEVICES, deviceId) + '</div><h3 class="campaign-section-title">02 / 选择航行强度</h3><div class="voyage-difficulties"><button class="campaign-choice selected" data-voyage-difficulty="normal" aria-pressed="true"><b>普通远航</b><p>熟悉目标、试验招式与装置搭配。</p></button><button class="campaign-choice" data-voyage-difficulty="overload" aria-pressed="false"><b>过载远航</b><p>普通敌人耐久与配额 +20%，敌方伤害 +12%。适合熟练开拓者。</p></button></div><label class="voyage-seed-label" for="voyage-seed">航路种子 <small>选填；相同种子复现航路，选择仍由你决定</small><input id="voyage-seed" type="text" inputmode="numeric" maxlength="10" placeholder="留空生成新航路" autocomplete="off"></label><p id="voyage-selection" class="campaign-selection" aria-live="polite"></p><div class="menu-buttons"><button class="launch-button" id="start-voyage">起航 · 第一重星海 <b>↗</b></button><button class="secondary-button" id="close-voyage-intro">返回营地</button></div><p class="campaign-note">房间之间安全整备，有限敌人不会无限刷新。刷新或关闭页面结束本局；账号同步成就与既有纪录，进行中的航路不会存档。</p>');
     const update = () => {
       $('screen-content').querySelectorAll('[data-voyage-device]').forEach(button => { const selected = button.dataset.voyageDevice === deviceId; button.classList.toggle('selected', selected); button.setAttribute('aria-pressed', String(selected)); });
       $('screen-content').querySelectorAll('[data-voyage-difficulty]').forEach(button => { const selected = button.dataset.voyageDifficulty === difficulty; button.classList.toggle('selected', selected); button.setAttribute('aria-pressed', String(selected)); });
       $('voyage-selection').textContent = voyageDevice(deviceId).title + ' · ' + (difficulty === 'overload' ? '过载远航' : '普通远航') + ' · 三槽构筑，七段旅程';
     };
+    $('voyage-seed').value = seedValue;
+    const fieldEntry = document.createElement('button'); fieldEntry.id = 'voyage-battlefield'; fieldEntry.className = 'secondary-button'; fieldEntry.textContent = '中段破阵 · 查看反制资料';
+    fieldEntry.addEventListener('click', () => { const seed = $('voyage-seed').value; showBattlefieldGuide(() => showVoyageIntro(deviceId, difficulty, seed)); });
+    $('screen-content').querySelector('.menu-buttons').append(fieldEntry);
     $('screen-content').querySelectorAll('[data-voyage-device]').forEach(button => button.addEventListener('click', () => { deviceId = button.dataset.voyageDevice; update(); tone('click'); }));
     $('screen-content').querySelectorAll('[data-voyage-difficulty]').forEach(button => button.addEventListener('click', () => { difficulty = button.dataset.voyageDifficulty; update(); tone('click'); }));
     $('start-voyage').addEventListener('click', () => {
@@ -636,6 +660,8 @@
       $('confirm-camp').addEventListener('click', () => { rememberBest(); resetRun(); welcome(); });
       $('cancel-camp').addEventListener('click', showPause);
     }); $('screen-content').querySelector('.menu-buttons').append(campButton);
+    const fieldEntry = document.createElement('button'); fieldEntry.id = 'pause-battlefield'; fieldEntry.className = 'secondary-button'; fieldEntry.textContent = '破阵战场资料';
+    fieldEntry.addEventListener('click', () => showBattlefieldGuide(showPause)); $('screen-content').querySelector('.menu-buttons').append(fieldEntry);
     addArchiveButton($('screen-content').querySelector('.menu-buttons'));
     addTacticSummary($('screen-content').querySelector('.menu-buttons'));
     addEvolutionSummary($('screen-content').querySelector('.menu-buttons'));
@@ -798,7 +824,7 @@
     runId = crypto.randomUUID();
     trackedRelayId = game.relays[0]?.id ?? null; trackedContractId = null; trackedEncounterId = null; renderer.trackedEncounterId = null; lastImpactTime = -1;
     renderer.camera.x = game.player.x; renderer.camera.y = game.player.y; renderDirty = true;
-    impactPause = 0; lastBurstTone = -1; reactorWasReady = false; phaseCoachSeen = false;
+    impactPause = 0; lastBurstTone = -1; lastFieldTone = -1; reactorWasReady = false; phaseCoachSeen = false;
     runStats = { shots: weapons.map(() => 0), dashes: 0, perfectReloads: 0 };
     coachStep = 0; coachMoveDistance = 0; objectiveExpanded = false; updateObjectiveDetails();
     if (renderer.resetEffects) renderer.resetEffects();
@@ -1208,6 +1234,7 @@
       else if (code === 'Escape' && screen === 'campaign-exit') { event.preventDefault(); $('keep-campaign').click(); }
       else if (code === 'Escape' && screen === 'rift-guide') { event.preventDefault(); returnFromRiftGuide(); }
       else if (code === 'Escape' && screen === 'evolution-guide') { event.preventDefault(); returnFromEvolutionGuide(); }
+      else if (code === 'Escape' && screen === 'battlefield') { event.preventDefault(); $('close-battlefield').click(); }
       else if (code === 'Escape' && screen === 'restart') { event.preventDefault(); showPause(); }
       return;
     }

@@ -206,6 +206,42 @@
         if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
         const angle = event.angle ?? Math.atan2(event.dy || 0, event.dx || 1);
         switch (event.type) {
+          case 'field-arm':
+            this.burst(x, y, event.friendly ? '#8debd1' : '#ffc187', 4, 50, .25);
+            break;
+          case 'field-capture': {
+            this.burst(x, y, '#a1ffe1', 7, 65, .35);
+            this.rings.push({ x, y, radius: 27, age: 0, life: .3, color: '#8debd1' });
+            for (let i = 0; i < 3; i++) {
+              const a = angle + i * TAU / 3, cos = Math.cos(a), sin = Math.sin(a);
+              this.arcs.push({ points: [[x + cos * 36 - sin * 7, y + sin * 36 + cos * 7], [x + cos * 23, y + sin * 23], [x + cos * 36 + sin * 7, y + sin * 36 - cos * 7]], color: '#b9ffe6', age: 0, life: .3 });
+            }
+            break;
+          }
+          case 'field-burst':
+            this.rings.push({ x, y, radius: Math.min(event.radius || 125, 180), age: 0, life: .4, color: event.friendly ? '#8debd1' : '#ffc187' });
+            this.burst(x, y, event.friendly ? '#b6ffe3' : '#ffd7a0', 12, 180, .45);
+            this.shake = Math.max(this.shake, 1.8);
+            break;
+          case 'cover-break':
+            this.burst(x, y, '#cbbd9c', 14, 150, .5, angle);
+            this.scars.push({ x, y, angle, radius: Math.min(event.radius || 30, 60), age: 0, life: 18, seed: .5 });
+            break;
+          case 'shield-block': {
+            const cos = Math.cos(angle), sin = Math.sin(angle);
+            this.burst(x, y, '#d1e5ff', 3, 85, .18, angle + Math.PI);
+            this.arcs.push({ points: [[x - sin * 12, y + cos * 12], [x + cos * 5, y + sin * 5], [x + sin * 12, y - cos * 12]], color: '#d1e5ff', age: 0, life: .12 });
+            break;
+          }
+          case 'shield-open':
+            this.burst(x, y, '#baffdb', 7, 105, .35);
+            this.rings.push({ x, y, radius: 35, age: 0, life: .3, color: '#a1eacb' });
+            break;
+          case 'breacher-crash':
+            this.burst(x, y, '#d9c09c', 12, 135, .4, angle + Math.PI);
+            this.rings.push({ x, y, radius: event.radius || 45, age: 0, life: .3, color: '#ffcf9b' });
+            this.shake = Math.max(this.shake, 1.5);
+            break;
           case 'spark':
             this.burst(x, y, event.color || colors.amber, 4, 95, .22);
             break;
@@ -571,7 +607,7 @@
       this.time += dt;
       this.world = game.world || this.world;
       this.bossColor = game.map?.boss?.color || colors.pink;
-      const terrainKey = `${game.map?.id || 'frontier'}:${this.world.width}:${this.world.height}${game.voyage ? ':' + game.voyage.room.id : ''}`;
+      const terrainKey = `${game.map?.id || 'frontier'}:${this.world.width}:${this.world.height}${game.terrainRevision ? ':r' + game.terrainRevision : ''}${game.voyage ? ':' + game.voyage.room.id : ''}`;
       if (terrainKey !== this.terrainKey) {
         this.mapId = game.map?.id || 'frontier'; this.terrainKey = terrainKey;
         this.terrainLayer = null; this.makeTerrain();
@@ -642,6 +678,7 @@
       this.drawTactics(game);
       this.drawVoyageFields(game);
       this.drawVoyageRoom(game);
+      this.drawBattlefieldWarnings(game);
       for (const encounter of game.encounters || []) this.drawEncounterFields(encounter, p);
       for (const relay of game.relays || []) if (this.visible(relay.x, relay.y, (relay.radius || 147) + 40)) this.drawRelay(relay);
       this.drawDelivery(game);
@@ -661,6 +698,7 @@
       const actors = [];
       for (const encounter of game.encounters || []) if (this.visible(encounter.x, encounter.y, 110)) actors.push({ y: encounter.y, kind: 'encounter', data: encounter });
       for (const obstacle of game.obstacles || []) if (this.visible(obstacle.x, obstacle.y, obstacle.radius + 30)) actors.push({ y: obstacle.y, kind: 'rock', data: obstacle });
+      for (const field of [...(game.battlefield?.props || []), ...(game.battlefield?.mines || [])]) if (field.status !== 'spent' && this.visible(field.x, field.y, (field.radius || 20) + 30)) actors.push({ y: field.y, kind: 'field', data: field });
       for (const enemy of game.enemies || []) if (this.visible(enemy.x, enemy.y, enemy.radius + 50)) actors.push({ y: enemy.y, kind: 'enemy', data: enemy });
       actors.push({ y: p.y, kind: 'player', data: p });
       for (const ghost of this.ghosts) {
@@ -672,6 +710,7 @@
       actors.sort((a, b) => a.y - b.y);
       for (const actor of actors) {
         if (actor.kind === 'rock') this.drawRock(actor.data);
+        else if (actor.kind === 'field') this.drawBattlefieldObject(actor.data);
         else if (actor.kind === 'encounter') this.drawEncounter(actor.data, p);
         else if (actor.kind === 'enemy') this.drawEnemy(actor.data);
         else this.drawPlayer(actor.data);
@@ -1207,6 +1246,53 @@
       }
     }
 
+    drawBattlefieldWarnings(game) {
+      const ctx = this.ctx;
+      for (const field of [...(game.battlefield?.props || []), ...(game.battlefield?.mines || [])]) {
+        if (field.status !== 'armed' || !(field.blastRadius > 0) || !this.visible(field.x, field.y, field.blastRadius + 12)) continue;
+        const radius = field.blastRadius, color = field.friendly ? '#8debd1' : '#ffc187';
+        const progress = 1 - clamp(field.remaining / Math.max(.001, field.duration), 0, 1);
+        ctx.save(); ctx.translate(field.x, field.y);
+        if (!field.friendly) { ctx.save(); ctx.globalAlpha *= .035; circle(ctx, 0, 0, radius, color); ctx.restore(); }
+        circle(ctx, 0, 0, radius, null, '#172a34', 5 / this.scale);
+        if (field.friendly) ctx.setLineDash([8 / this.scale, 7 / this.scale]);
+        circle(ctx, 0, 0, radius, null, color, 2 / this.scale); ctx.setLineDash([]);
+        ctx.beginPath(); ctx.arc(0, 0, radius + 5, -Math.PI / 2, -Math.PI / 2 + TAU * progress);
+        ctx.strokeStyle = field.friendly ? '#c9ffea' : '#fff0cf'; ctx.lineWidth = 2 / this.scale; ctx.stroke();
+        if (!field.friendly) for (let i = 0; i < 4; i++) {
+          const a = i * TAU / 4, cos = Math.cos(a), sin = Math.sin(a);
+          path(ctx, [[cos * (radius - 12) - sin * 5, sin * (radius - 12) + cos * 5], [cos * (radius - 5), sin * (radius - 5)], [cos * (radius - 12) + sin * 5, sin * (radius - 12) - cos * 5]], false);
+          ctx.strokeStyle = color; ctx.lineWidth = 1.5 / this.scale; ctx.stroke();
+        }
+        ctx.restore();
+      }
+    }
+
+    drawBattlefieldObject(field) {
+      if (field.status === 'spent') return;
+      const ctx = this.ctx, r = field.radius || (field.kind === 'mine' ? 11 : 20), color = field.friendly ? '#8debd1' : '#ffc187';
+      ctx.save(); ctx.translate(field.x, field.y);
+      circle(ctx, 1, r * .5, r * 1.1, '#14242a99');
+      if (field.kind === 'capacitor') {
+        polygon(ctx, 0, 0, r, 6, Math.PI / 6); ctx.fillStyle = '#41474b'; ctx.fill(); ctx.strokeStyle = '#9ea8a3'; ctx.lineWidth = 2; ctx.stroke();
+        box(ctx, -r * .5, -r * .7, r, r * 1.4, 3, '#25373d', color);
+        for (const side of [-1, 1]) box(ctx, side * r * .65 - 3, -r * .45, 6, r * .9, 1, '#7b8178');
+        path(ctx, [[3, -10], [-5, 1], [0, 1], [-3, 10], [6, -2], [1, -2]]); ctx.fillStyle = field.status === 'armed' ? '#fff4d1' : color; ctx.fill();
+        if (field.hp < field.maxHp) this.healthBar(0, -r - 7, 30, field.hp / field.maxHp, color);
+      } else {
+        for (let i = 0; i < 3; i++) {
+          const a = i * TAU / 3;
+          path(ctx, [[Math.cos(a) * r * .6, Math.sin(a) * r * .6], [Math.cos(a) * (r + 5), Math.sin(a) * (r + 5)]], false);
+          ctx.strokeStyle = '#8c9692'; ctx.lineWidth = 3; ctx.stroke();
+        }
+        polygon(ctx, 0, 0, r, 6, Math.PI / 6); ctx.fillStyle = '#293a40'; ctx.fill(); ctx.strokeStyle = color; ctx.lineWidth = 1.7 / this.scale; ctx.stroke();
+        polygon(ctx, 0, 0, r * .48, 3, -Math.PI / 2); ctx.fillStyle = field.status === 'armed' ? '#fff0c0' : field.settleTimer > 0 ? '#7f8f92' : color; ctx.fill();
+        if (field.settleTimer > 0) { ctx.setLineDash([3, 4]); circle(ctx, 0, 0, r + 7, null, '#8da2a5', 1 / this.scale); ctx.setLineDash([]); }
+      }
+      if (field.friendly) { path(ctx, [[-5, r + 6], [-1, r + 10], [6, r + 3]], false); ctx.strokeStyle = '#baffe4'; ctx.lineWidth = 2 / this.scale; ctx.stroke(); }
+      ctx.restore();
+    }
+
     paintRuinsTerrain(game) {
       const ctx = this.ctx, { width: w, height: h } = this.world, spawn = game.spawn || this.spawn;
       for (const d of this.decor) {
@@ -1615,6 +1701,18 @@
       const ctx = this.ctx, size = r.radius || 30;
       const seed = Math.sin(r.x * 0.031 + r.y * 0.075);
       ctx.save(); ctx.translate(r.x, r.y);
+      if (r.fragile) {
+        const color = this.mapId === 'voyage-forge' ? '#c9ad80' : this.mapId === 'voyage-tide' ? '#a2c5b5' : '#bdb6d0', damage = 1 - clamp(r.hp / r.maxHp, 0, 1);
+        polygon(ctx, 2, size * .25, size, 6, seed); ctx.fillStyle = '#172733'; ctx.fill();
+        polygon(ctx, 0, 0, size * .96, 6, seed); ctx.fillStyle = '#5c6467'; ctx.fill(); ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.stroke();
+        path(ctx, [[-size * .62, -size * .22], [-size * .28, -size * .64], [size * .35, -size * .45], [size * .44, -size * .08], [0, size * .09]]); ctx.fillStyle = '#859187'; ctx.fill();
+        path(ctx, [[-size * .3, -size * .53], [-size * .04, -size * .09], [size * .15, size * .13], [size * .02, size * .55]], false);
+        ctx.strokeStyle = '#22333c'; ctx.lineWidth = 3; ctx.stroke();
+        if (damage > .2) { path(ctx, [[-size * .04, -size * .09], [size * (.23 + damage * .3), -size * .3], [size * .68, -size * .16]], false); ctx.strokeStyle = '#e8cea3'; ctx.lineWidth = 1.5; ctx.stroke(); }
+        polygon(ctx, -size * .43, size * .23, 4, 4, Math.PI / 4); ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
+        if (damage > 0) this.healthBar(0, -size - 7, Math.max(24, size * 1.25), r.hp / r.maxHp, color);
+        ctx.restore(); return;
+      }
       if (this.mapId === 'ruins') {
         polygon(ctx, 2, size * .23, size, 5, seed); ctx.fillStyle = '#1e3027'; ctx.fill();
         polygon(ctx, 0, 0, size * .98, 5, seed); ctx.fillStyle = '#6b735a'; ctx.fill(); ctx.strokeStyle = '#aca384'; ctx.lineWidth = 2; ctx.stroke();
@@ -1838,9 +1936,79 @@
       }
     }
 
+    drawBattlefieldEnemy(e) {
+      const ctx = this.ctx, r = e.radius || 20, shieldOpen = e.shieldOpenTimer > 0, preparing = e.windup > 0;
+      if (e.phaseMarkTimer > 0) this.drawPhaseMark(e, r);
+      ctx.save(); ctx.translate(e.x, e.y);
+      ctx.beginPath(); ctx.ellipse(2, r * .6, r * 1.12, r * .5, 0, 0, TAU); ctx.fillStyle = '#09182377'; ctx.fill();
+      ctx.rotate(e.angle || 0); ctx.scale(r / 20, r / 20);
+      const stride = this.reducedMotion ? 0 : Math.sin(this.time * 9 + (Number(e.id) || e.x) * .13) * 2;
+      for (const side of [-1, 1]) for (let i = 0; i < 3; i++) {
+        const x = -15 + i * 12;
+        path(ctx, [[x, side * 8], [x - 8, side * (15 + (i % 2 ? stride : -stride))], [x - 13, side * 19]], false);
+        ctx.strokeStyle = '#1b2b31'; ctx.lineWidth = 5; ctx.stroke(); ctx.strokeStyle = e.type === 'breacher' ? '#b6a087' : '#83989a'; ctx.lineWidth = 2; ctx.stroke();
+      }
+      if (e.type === 'bulwark') {
+        polygon(ctx, -3, 0, 21, 6, Math.PI / 6); ctx.fillStyle = '#455260'; ctx.fill(); ctx.strokeStyle = '#bac3c5'; ctx.lineWidth = 1.5; ctx.stroke();
+        for (const side of [-1, 1]) box(ctx, -18, side * 12 - 5, 24, 10, 2, '#6e7979', '#c1b295');
+        polygon(ctx, -5, 0, 10, 4, Math.PI / 4); ctx.fillStyle = shieldOpen ? '#c9ffdf' : '#54728b'; ctx.fill(); ctx.strokeStyle = shieldOpen ? '#8fe4c0' : '#d5e9fc'; ctx.lineWidth = 1.5; ctx.stroke();
+        for (const side of [-1, 1]) {
+          path(ctx, shieldOpen ? [[10, side * 7], [14, side * 20], [4, side * 19], [3, side * 9]] : [[9, side * 2], [18, side * 12], [11, side * 19], [2, side * 10]]);
+          ctx.fillStyle = '#7b8990'; ctx.fill(); ctx.strokeStyle = shieldOpen ? '#93d9bd' : '#f1c99a'; ctx.lineWidth = 1.8; ctx.stroke();
+        }
+        box(ctx, 12, -3, preparing ? 19 : 15, 6, 1, '#273b48', preparing ? '#fff1ca' : '#b9cbd1');
+      } else if (e.type === 'breacher') {
+        path(ctx, [[-25, -10], [-7, -18], [16, -11], [24, 0], [16, 11], [-7, 18], [-25, 10]]);
+        ctx.fillStyle = '#73584c'; ctx.fill(); ctx.strokeStyle = '#d7ac83'; ctx.lineWidth = 1.5; ctx.stroke();
+        for (let i = 0; i < 3; i++) { path(ctx, [[-20 + i * 10, -12], [-13 + i * 10, 0], [-20 + i * 10, 12]], false); ctx.strokeStyle = '#b88d6a'; ctx.lineWidth = 3; ctx.stroke(); }
+        for (const side of [-1, 1]) {
+          path(ctx, [[6, side * 7], [30, side * 16], [21, side * 3], [12, side * 2]]);
+          ctx.fillStyle = '#e5d3aa'; ctx.fill(); ctx.strokeStyle = '#453a32'; ctx.lineWidth = 1.2; ctx.stroke();
+        }
+        polygon(ctx, 16, 0, preparing ? 8 : 6, 3, 0); ctx.fillStyle = preparing ? '#fff2ca' : '#f2b782'; ctx.fill();
+      } else {
+        circle(ctx, -7, 0, 15, '#48584d', '#a9bd96', 1.5);
+        for (const side of [-1, 1]) {
+          box(ctx, -19, side * 13 - 6, 14, 12, 3, '#253a3c', '#dcbb83');
+          polygon(ctx, -12, side * 13, 4, 3, -Math.PI / 2); ctx.fillStyle = '#ffcd91'; ctx.fill();
+        }
+        path(ctx, [[-5, -10], [8, -7], [17, 0], [8, 7], [-5, 10]]); ctx.fillStyle = '#738574'; ctx.fill(); ctx.strokeStyle = '#d0dbad'; ctx.lineWidth = 1.5; ctx.stroke();
+        box(ctx, 7, -5, preparing ? 22 : 17, 10, 3, '#344c47', '#e5c28e');
+        path(ctx, [[18, -8], [23, -13], [30, -10]], false); ctx.strokeStyle = '#c4d8af'; ctx.lineWidth = 1.7; ctx.stroke();
+      }
+      for (const side of [-1, 1]) circle(ctx, 12, side * 4, 2.1, preparing ? '#fffbe6' : '#ffc6a4');
+      const flash = this.hitFlashes.get(e.id) || 0;
+      if (flash > 0) { ctx.globalAlpha *= flash / .12 * .6; circle(ctx, -3, 0, 16, '#fff4d7'); }
+      ctx.restore();
+      if (e.type === 'bulwark') {
+        if (preparing && Number.isFinite(e.shotAngle)) {
+          ctx.save(); ctx.translate(e.x, e.y); ctx.rotate(e.shotAngle); ctx.setLineDash([5 / this.scale, 8 / this.scale]);
+          for (const offset of [-.16, 0, .16]) {
+            path(ctx, [[Math.cos(offset) * (r + 14), Math.sin(offset) * (r + 14)], [Math.cos(offset) * (r + 100), Math.sin(offset) * (r + 100)]], false);
+            ctx.strokeStyle = '#152b36'; ctx.lineWidth = 4 / this.scale; ctx.stroke(); ctx.strokeStyle = '#ffe0b1'; ctx.lineWidth = 1.5 / this.scale; ctx.stroke();
+          }
+          ctx.setLineDash([]); ctx.restore();
+        }
+        ctx.save(); ctx.translate(e.x, e.y); ctx.rotate(e.shieldAngle ?? e.angle ?? 0);
+        if (!shieldOpen) {
+          ctx.beginPath(); ctx.arc(0, 0, r + 8, -Math.PI / 3, Math.PI / 3); ctx.strokeStyle = '#172c37'; ctx.lineWidth = 6 / this.scale; ctx.stroke();
+          ctx.strokeStyle = '#bddafa'; ctx.lineWidth = 2.5 / this.scale; ctx.stroke();
+          for (const side of [-1, 1]) { path(ctx, [[(r + 8) * .5, side * (r + 8) * .866], [(r + 3) * .5, side * (r + 3) * .866]], false); ctx.strokeStyle = '#ebf4ff'; ctx.lineWidth = 2 / this.scale; ctx.stroke(); }
+        } else for (const side of [-1, 1]) {
+          path(ctx, [[r * .4, side * (r + 8)], [r * .1, side * (r + 3)], [-r * .2, side * (r + 8)]], false); ctx.strokeStyle = '#a1eacb'; ctx.lineWidth = 1.5 / this.scale; ctx.stroke();
+        }
+        ctx.restore();
+      }
+      if (e.stunTimer > 0) {
+        path(ctx, [[e.x - 9, e.y - r - 6], [e.x - 4, e.y - r - 12], [e.x, e.y - r - 6], [e.x + 6, e.y - r - 12]], false); ctx.strokeStyle = '#a7f3df'; ctx.lineWidth = 1.5 / this.scale; ctx.stroke();
+      }
+      if (e.hp < e.maxHp) this.healthBar(e.x, e.y - r - 19, Math.max(30, r * 1.8), e.hp / e.maxHp, e.type === 'bulwark' && shieldOpen ? '#9ee1bf' : '#e6b58e');
+    }
+
     drawEnemy(e) {
       const ctx = this.ctx, r = e.radius || 17, boss = e.type === 'boss';
       if (boss && e.variant === 'voyage') { this.drawVoyageEnemy(e); return; }
+      if (['bulwark', 'breacher', 'engineer'].includes(e.type)) { this.drawBattlefieldEnemy(e); return; }
       if (boss && e.variant === 'ruins') { this.drawRuinsEnemy(e); return; }
       if (e.type === 'anchor' || boss && e.variant === 'nexus') { this.drawNexusEnemy(e); return; }
       const foundryBoss = boss && e.variant === 'foundry', frostBoss = boss && e.variant === 'frost', stormBoss = boss && e.variant === 'storm';
@@ -2211,6 +2379,13 @@
 
     drawHazard(h, game = {}) {
       const ctx = this.ctx, progress = h.resolved ? 1 : 1 - clamp((h.remaining || 0) / (h.duration || 1), 0, 1);
+      if (h.engineerLanding) {
+        ctx.save(); ctx.translate(h.x, h.y); ctx.setLineDash([4 / this.scale, 6 / this.scale]);
+        circle(ctx, 0, 0, h.radius || 32, null, '#182c36', 4 / this.scale); circle(ctx, 0, 0, h.radius || 32, null, '#ffc187', 1.6 / this.scale); ctx.setLineDash([]);
+        polygon(ctx, 0, 0, 6, 3, -Math.PI / 2); ctx.strokeStyle = '#ffdcab'; ctx.lineWidth = 1.5 / this.scale; ctx.stroke();
+        path(ctx, [[0, -22], [0, -12], [-4, -16], [0, -12], [4, -16]], false); ctx.stroke();
+        ctx.restore(); return;
+      }
       if (h.voyageTeleport) {
         ctx.save(); ctx.translate(h.x, h.y); ctx.setLineDash([5, 7]); circle(ctx, 0, 0, h.radius || 46, null, h.color || '#d1baff', 2); ctx.setLineDash([]);
         for (let i = 0; i < 4; i++) { const a = i * TAU / 4; path(ctx, [[Math.cos(a) * 15, Math.sin(a) * 15], [Math.cos(a) * 28, Math.sin(a) * 28]], false); ctx.strokeStyle = '#dfcaff'; ctx.lineWidth = 2; ctx.stroke(); }
