@@ -523,3 +523,61 @@ body.immersive-page{overflow:hidden}
   .battlefield-catalog{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:14px 0}
   .battlefield-card{padding:12px}
 }
+
+/* A continuous recovery run uses the existing controls and objective row. */
+.camp-mode-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+.salvage-entry{border-color:#93cbb4;background:linear-gradient(125deg,#23443d,#172b34);box-shadow:inset 3px 0 #b6e9c4}
+.salvage-entry .campaign-entry-mark{color:#c4f2c6}
+.salvage-screen{background:radial-gradient(ellipse at top,#25423bf5,#0a1820f9);padding:24px;align-items:center}
+.salvage-screen .screen-content{width:min(760px,100%);padding:0 6px 10px;text-align:left;overscroll-behavior:contain}
+.salvage-screen h2{font-size:27px;line-height:1.4;letter-spacing:1px;margin:7px 0}
+.salvage-screen .screen-kicker{color:#c4e6b8;letter-spacing:2px;margin-bottom:10px}
+.salvage-screen .salvage-intro-note{font-size:12px;line-height:1.7;margin:8px 0 12px;color:#b7cfca}
+.salvage-config{display:grid;grid-template-columns:1.2fr 1fr;gap:12px;align-items:end;margin:12px 0}
+.salvage-difficulties{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.salvage-difficulties .campaign-choice{padding:9px 12px;min-height:70px;touch-action:manipulation}
+.salvage-difficulties .campaign-choice b{font-size:14px;line-height:1.5}
+.salvage-difficulties .campaign-choice small{font-size:10px;line-height:1.5;letter-spacing:0;margin:4px 0 0}
+.salvage-difficulties .campaign-choice.selected{--choice-color:#b8e8b5}
+.salvage-config .voyage-seed-label{font-size:12px;margin:0}
+.salvage-config .voyage-seed-label small{font-size:10px;margin-left:8px}
+.salvage-config .voyage-seed-label input{min-height:44px;margin-top:6px}
+.salvage-selection{font-size:11px!important;line-height:1.7!important;color:#c4dfb6!important;margin:8px 0!important}
+.salvage-launch{justify-content:flex-start;flex-wrap:nowrap;margin:12px 0;gap:8px}
+.salvage-launch .launch-button{flex:1;min-width:0;min-height:48px;padding:10px 14px;font-size:13px;letter-spacing:1px;gap:18px}
+.salvage-launch .secondary-button{flex:.65;min-width:0;min-height:48px;padding:10px}
+.salvage-rules{font-size:11px;line-height:1.8;color:#abc7bf;text-align:left;margin-top:12px;border-top:1px solid #527b6b66}
+.salvage-rules summary{display:list-item;min-height:44px;padding:11px 0;cursor:pointer;color:#d4e9c7;touch-action:manipulation}
+.salvage-rules summary:focus-visible{outline:2px solid var(--lime);outline-offset:2px}
+.salvage-rules p{margin:8px 0}
+.salvage-rules b{color:#d0e2c8;font-weight:500;margin-right:8px}
+.salvage-rules .secondary-button{min-height:44px}
+.salvage-result-state{font-size:12px!important;color:#c7e4be!important}
+.map-screen .salvage-destinations .map-destination{min-height:64px;flex-shrink:0}
+@media(max-width:760px){.map-screen .salvage-destinations{grid-template-columns:repeat(2,minmax(0,1fr))}.map-screen .salvage-destinations .map-destination{min-height:100px}.map-screen .salvage-destinations .map-destination b{font-size:12px}.map-screen .salvage-destinations .map-destination small,.map-screen .salvage-destinations .map-destination span{font-size:9px}}
+@media(pointer:coarse) and (orientation:landscape) and (max-height:520px){.map-screen .salvage-destinations .map-destination{min-height:64px}.map-screen .salvage-destinations .map-destination b{font-size:12px}.map-screen .salvage-destinations .map-destination small,.map-screen .salvage-destinations .map-destination span{font-size:9px}}
+@media(max-width:600px){
+  .camp-mode-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .camp-mode-grid #salvage-entry{grid-column:1/-1}
+  .camp-mode-grid #voyage-entry{grid-column:auto}
+  .salvage-screen{padding:16px 12px}
+  .salvage-screen h2{font-size:23px}
+  .salvage-config{grid-template-columns:1fr;gap:9px;margin:10px 0}
+  .salvage-config .voyage-seed-label small{display:inline;margin-left:8px}
+  .salvage-difficulties .campaign-choice{min-height:64px;padding:8px 10px}
+  .salvage-difficulties .campaign-choice b{font-size:13px}
+  .salvage-difficulties .campaign-choice small{font-size:9px}
+}
+@media(pointer:coarse) and (orientation:landscape){
+  .camp-mode-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .camp-mode-grid #salvage-entry,.camp-mode-grid #voyage-entry{grid-column:auto}
+  .salvage-screen{padding:10px max(18px,env(safe-area-inset-right)) 10px max(18px,env(safe-area-inset-left))}
+  .salvage-screen .screen-content{padding:0 4px 8px}
+  .salvage-screen .screen-kicker{font-size:8px;margin-bottom:5px}
+  .salvage-screen h2{font-size:22px;margin:4px 0}
+  .salvage-screen .salvage-intro-note{font-size:11px;margin:6px 0}
+  .salvage-config{grid-template-columns:1.2fr 1fr;gap:10px;margin:8px 0}
+  .salvage-difficulties .campaign-choice{min-height:62px;padding:7px 10px}
+  .salvage-screen .salvage-selection{margin:6px 0!important}
+  .salvage-launch{margin:8px 0}
+}

@@ -160,6 +160,15 @@
     { id: 'capacitor', title: '电容筒', icon: 'ϟ', category: '战场物件', description: '射击引爆有 0.65 秒预警，会伤害敌我双方。EMP 接管后安全爆破；完整岩石能挡住雷与电容爆炸，注意预警边界。' },
     { id: 'fragile', title: '碎裂掩体', icon: '◇', category: '战场物件', description: '裂纹掩体可被武器、爆破或破岩兽撞碎。破坏后碰撞和射线同时开放；普通岩石仍然坚固。' }
   ];
+  const SALVAGE_DIFFICULTIES = [
+    { id: 'normal', title: '启航', description: '标准生命与伤害，有限巡逻和增援。', hp: 1, damage: 1 },
+    { id: 'overload', title: '超载', description: '敌人生命增加 20%、伤害增加 12%；来源和增援数量不变。', hp: 1.2, damage: 1.12 }
+  ];
+  const SALVAGE_MAP = { id: 'salvage', name: '危险回收区', subtitle: '自主撤离', mode: 'salvage', objectiveLabel: '样本', color: '#9fe9d4',
+    description: '截停货运、启动钻探、选择静默或暴力开箱，带着样本自主撤离。',
+    briefing: '样本带上舰才计奖金。E 回收或呼叫接应；舰到后在圈内累计 3 秒登舰，离圈暂停。空手也能返回。',
+    boss: { name: '巡防守卫', subtitle: '无需击败首领，自主呼叫接应', color: '#9fe9d4' },
+    threat: { name: '警戒扫描', description: '行动提高警戒；高警戒扫描锁定旧位置，移出预警圈。' } };
 
   class Game {
     constructor(options = {}) {
@@ -171,10 +180,11 @@
 
     reset(mapId = this.map ? this.map.id : 'frontier', options = {}, idBase = 1) {
       this.random = this.baseRandom;
-      this.mode = options.mode === 'voyage' ? 'voyage' : options.mode === 'campaign' ? 'campaign' : options.mode === 'trial' ? 'trial' : 'expedition';
+      this.mode = options.mode === 'salvage' ? 'salvage' : options.mode === 'voyage' ? 'voyage' : options.mode === 'campaign' ? 'campaign' : options.mode === 'trial' ? 'trial' : 'expedition';
       this.trial = null;
       this.campaign = null;
       this.voyage = null;
+      this.salvage = null;
       this.battlefield = null;
       this.map = MAPS.find(map => map.id === mapId) || MAPS[0];
       this.nextId = idBase;
@@ -283,8 +293,268 @@
       if (this.mode === 'trial') this._configureTrial(options.seed);
       if (this.mode === 'campaign') this._configureCampaign(options);
       if (this.mode === 'voyage') this._configureVoyage(options);
+      if (this.mode === 'salvage') this._configureSalvage(options);
       this._objective();
       return this;
+    }
+
+    _configureSalvage(options) {
+      const seed = Number.isFinite(options.seed) ? Math.trunc(options.seed) >>> 0 : 1;
+      const seeded = initial => {
+        let state = initial;
+        return () => {
+          state = state + 0x6D2B79F5 | 0;
+          let value = Math.imul(state ^ state >>> 15, 1 | state);
+          value = value + Math.imul(value ^ value >>> 7, 61 | value) ^ value;
+          return ((value ^ value >>> 14) >>> 0) / 4294967296;
+        };
+      };
+      const layoutRandom = seeded(seed), offset = () => Math.floor(layoutRandom() * 71) - 35;
+      this.random = seeded(seed ^ 0x8CB92BA7);
+      this.map = { ...SALVAGE_MAP }; this.world = { width: 2600, height: 1900 };
+      Object.assign(this.player, { x: 350, y: 1580, angle: -Math.PI / 2 });
+      this.spawn = { x: 350, y: 1580 };
+      this.relays = []; this.contracts = []; this.encounters = []; this.delivery = null; this.escort = null;
+      this.completedRelays = 0; this.bossSpawned = false; this.sectorThreat.active = false;
+      this.sectorThreat.name = this.map.threat.name; this.sectorThreat.description = this.map.threat.description;
+      const sources = [
+        { kind: 'vault', name: '货道保险箱', x: 630, y: 1430, radius: 26, value: 3, hp: 90, maxHp: 90, status: 'locked', quietTimer: 0 },
+        { kind: 'drill', name: '荒坡采样井', x: 1050, y: 1180, radius: 28, value: 4, hp: 0, maxHp: 0, status: 'idle', progress: 0, duration: 8, workRadius: 150 },
+        { kind: 'vault', name: '废场保险箱', x: 1800, y: 1040, radius: 26, value: 3, hp: 90, maxHp: 90, status: 'locked', quietTimer: 0 },
+        { kind: 'drill', name: '高地采样井', x: 1560, y: 470, radius: 28, value: 4, hp: 0, maxHp: 0, status: 'idle', progress: 0, duration: 8, workRadius: 150 }
+      ].map(source => ({ ...source, x: source.x + offset(), y: source.y + offset(), id: this._id(), type: 'salvage-source', hitFlash: 0 }));
+      const path = [{ x: 1860, y: 380 }, { x: 2310, y: 380 }, { x: 2310, y: 720 }, { x: 1860, y: 720 }];
+      sources.push({ id: this._id(), type: 'salvage-source', kind: 'drone', name: '运输无人机', ...path[0], radius: 25,
+        value: 3, hp: 90, maxHp: 90, status: 'flying', speed: 80, path, pathIndex: 1, angle: 0, hitFlash: 0 });
+      const exits = [{ x: 260, y: 1650, name: '西侧接应点' }, { x: 2320, y: 1700, name: '东侧接应点' }]
+        .map(point => ({ ...point, id: this._id(), type: 'salvage-exit', radius: 100 }));
+      this.salvage = { seed, difficulty: SALVAGE_DIFFICULTIES.some(item => item.id === options.difficulty) ? options.difficulty : 'normal',
+        status: 'exploring', carried: 0, settled: 0, lostSamples: 0, bonus: 0, alarm: 0, alertLevel: 1,
+        thresholds: [false, false, false], sources, exits, selectedId: null, evac: null, pending: [], spawnTimer: 3, spawned: 0,
+        hazardTimer: 9, fieldStats: { fractures: 0, detonations: 0, captures: 0 } };
+      this.stations = [{ x: 710, y: 1650, kind: 'medical' }, { x: 1320, y: 960, kind: 'armory' }, { x: 2170, y: 1470, kind: 'medical' }]
+        .map(point => ({ ...point, id: this._id(), type: 'station', radius: 29, name: point.kind === 'medical' ? '医疗舱' : '武器工坊', cost: point.kind === 'medical' ? 10 : 20, uses: 0 }));
+      this.crates = [[530, 1710], [960, 1480], [1160, 670], [1850, 830], [2250, 1530], [470, 950]]
+        .map(([x, y]) => ({ id: this._id(), type: 'crate', x, y, radius: 20, opened: false }));
+      const protectedPoints = [this.player, ...[{ x: 780, y: 1580 }, { x: 1440, y: 1280 }, { x: 1740, y: 820 }, { x: 2200, y: 1050 }].map(point => ({ ...point, clearance: 60 })), ...exits.map(point => ({ ...point, clearance: 125 })),
+        ...sources.map(source => ({ ...source, clearance: source.kind === 'drill' ? 175 : 100 })), ...this.stations, ...this.crates];
+      const routes = [[this.player, sources[0]], [sources[0], sources[1]], [sources[1], sources[2]], [sources[1], sources[3]],
+        [sources[2], exits[1]], [sources[3], path[0]], ...path.map((point, index) => [point, path[(index + 1) % path.length]])];
+      this.obstacles = [];
+      for (let row = 0; row < 6; row++) for (let col = 0; col < 8; col++) {
+        const rock = { id: this._id(), type: 'rock', x: 230 + col * 310 + offset(), y: 210 + row * 290 + offset(), radius: 30 + (row + col) % 3 * 8, variant: (row + col) % 3 };
+        if ((row + col * 3) % 4 === 0 || protectedPoints.some(point => distance(rock, point) < rock.radius + (point.clearance || 80)) ||
+          routes.some(([a, b]) => this._segmentHit(a.x, a.y, b.x - a.x, b.y - a.y, rock, 60) !== null)) continue;
+        this.obstacles.push(rock);
+      }
+      this.terrainRevision = (this.terrainRevision || 0) + 1;
+      this._configureBattlefield();
+      this._queueSalvage(['crawler', 'crawler', 'spitter', 'crawler', 'breacher', 'spitter', 'crawler', 'bulwark'], 'patrol');
+    }
+
+    salvageTarget() {
+      const salvage = this.salvage;
+      if (!salvage || ['extracted', 'withdrawn', 'failed'].includes(salvage.status)) return null;
+      const available = salvage.sources.filter(source => source.status !== 'collected');
+      let target = [...available, ...salvage.exits].find(item => item.id === salvage.selectedId);
+      if (!target) target = salvage.evac ? salvage.exits.find(exit => exit.id === salvage.evac.exitId) :
+        available.sort((a, b) => distance(this.player, a) - distance(this.player, b))[0] || salvage.exits[0];
+      if (target.type === 'salvage-exit') {
+        const active = salvage.evac && salvage.evac.exitId === target.id, boarding = active && salvage.status === 'boarding';
+        return { id: target.id, x: target.x, y: target.y, kind: 'exit', label: target.name,
+          hint: active ? boarding ? '进入接应圈累计 3 秒；离圈暂停' : '接应途中，可继续作战' : salvage.evac ? '接应已锁定另一个点' : '靠近按 E 呼叫接应；空手也能返回',
+          progress: active ? boarding ? salvage.evac.progress : salvage.evac.duration - salvage.evac.remaining : 0,
+          total: active ? boarding ? salvage.evac.boardingDuration : salvage.evac.duration : 0 };
+      }
+      const hint = target.kind === 'drill' ? target.status === 'drilling' ? '圈内推进，离圈暂停；可以继续作战' : '靠近按 E 钻探，圈内累计 8 秒' :
+        target.status === 'open' ? '靠近按 E 回收货物' : target.kind === 'vault' ? target.quietTimer > 0 ? '临时解锁中，靠近按 E 安静领取' : '近处 EMP 静默解锁，或射击暴力破锁' : '射击截停，再靠近按 E 回收';
+      return { id: target.id, x: target.x, y: target.y, kind: target.kind, label: target.status === 'open' && target.kind === 'drone' ? '无人机货物' : target.name, hint,
+        progress: target.kind === 'drill' ? target.progress : target.maxHp - target.hp, total: target.kind === 'drill' ? target.duration : target.maxHp };
+    }
+
+    selectSalvageTarget(id) {
+      if (!this.salvage || this.phase !== 'playing' || ![...this.salvage.sources.filter(source => source.status !== 'collected'), ...this.salvage.exits].some(item => item.id === id)) return false;
+      this.salvage.selectedId = id; this._objective(); return true;
+    }
+
+    _queueSalvage(plan, reason) {
+      if (!this.salvage || ['extracted', 'withdrawn', 'failed'].includes(this.salvage.status)) return;
+      const tickets = plan.map(type => ({ type, reason }));
+      // A new action's response arrives before leftover patrols; all old tickets remain finite and intact.
+      if (reason === 'patrol') this.salvage.pending.push(...tickets);
+      else this.salvage.pending.unshift(...tickets);
+    }
+
+    _raiseSalvageAlarm(amount) {
+      const salvage = this.salvage;
+      if (!salvage || this.phase !== 'playing') return;
+      salvage.alarm = clamp(salvage.alarm + amount, 0, 100);
+      const plans = [['engineer', 'crawler'], ['bulwark', 'spitter', 'charger'], ['breacher', 'engineer', 'tank', 'mortar']];
+      for (const [index, threshold] of [25, 55, 80].entries()) {
+        if (salvage.alarm < threshold || salvage.thresholds[index]) continue;
+        salvage.thresholds[index] = true; salvage.alertLevel = index + 2;
+        this._queueSalvage(plans[index], 'alert-' + salvage.alertLevel);
+        this._emit('salvage-alert', this.player, { level: salvage.alertLevel, alarm: salvage.alarm, color: '#ffc18a' });
+      }
+    }
+
+    _collectSalvage(source) {
+      if (!this.salvage || this.phase !== 'playing' || source.status === 'collected' ||
+        !(source.status === 'open' || source.kind === 'vault' && source.quietTimer > 0 || source.kind === 'drill' && source.status === 'drilling' && source.progress >= source.duration)) return false;
+      source.status = 'collected'; source.quietTimer = 0; this.salvage.carried += source.value;
+      if (this.salvage.selectedId === source.id) this.salvage.selectedId = null;
+      this._emit('salvage-collected', source, { sourceId: source.id, kind: source.kind, value: source.value, carried: this.salvage.carried, color: '#9fe9d4' });
+      this._objective(); return true;
+    }
+
+    _damageSalvageSource(source, amount) {
+      if (!this.salvage || this.phase !== 'playing' || !['locked', 'flying'].includes(source.status) || source.hp <= 0) return;
+      source.hp = Math.max(0, source.hp - amount); source.hitFlash = .08;
+      this._emit('spark', source, { color: '#ffc18a' });
+      if (source.hp > 0) return;
+      source.status = 'open'; source.quietTimer = 0;
+      this._raiseSalvageAlarm(source.kind === 'vault' ? 18 : 12);
+      this._emit('salvage-source-open', source, { sourceId: source.id, kind: source.kind, value: source.value, color: '#ffc18a' });
+      this._objective();
+    }
+
+    _unlockSalvageVaults(origin) {
+      if (!this.salvage || this.phase !== 'playing') return;
+      for (const source of this.salvage.sources) {
+        if (source.kind !== 'vault' || source.status !== 'locked' || distance(origin, source) > 110 ||
+          this.obstacles.some(rock => this._segmentHit(origin.x, origin.y, source.x - origin.x, source.y - origin.y, rock, 0) !== null)) continue;
+        source.quietTimer = 4;
+        this._emit('salvage-vault-unlock', source, { sourceId: source.id, kind: source.kind, duration: 4, color: '#9fe9d4' });
+      }
+    }
+
+    _salvageInteraction() {
+      const salvage = this.salvage;
+      const source = salvage.sources.filter(item => item.status !== 'collected' && distance(this.player, item) <= 94)
+        .sort((a, b) => distance(this.player, a) - distance(this.player, b))[0];
+      if (source) {
+        const action = source.status === 'open' ? '回收' : source.kind === 'vault' && source.quietTimer > 0 ? '静默领取' : source.kind === 'drill' && source.status === 'idle' ? '钻探' : '';
+        const hint = action ? 'E · ' + action + ' / 样本 +' + source.value : source.kind === 'drill' ? '钻探 ' + source.progress.toFixed(1) + '/8 秒 · 圈内推进，离圈暂停' :
+          source.kind === 'vault' ? '近处 EMP 静默解锁，或射击暴力破锁' : '先射击截停运输无人机';
+        return { target: source, action: this.phase === 'playing' ? action : '', hint };
+      }
+      const exit = salvage.exits.filter(item => distance(this.player, item) <= item.radius)
+        .sort((a, b) => distance(this.player, a) - distance(this.player, b))[0];
+      if (!exit) return null;
+      return { target: exit, action: this.phase === 'playing' && !salvage.evac ? '呼叫接应' : '',
+        hint: !salvage.evac ? 'E · 呼叫接应 / 10 秒到达，再在圈内累计 3 秒登舰' : salvage.evac.exitId !== exit.id ? '接应已锁定另一处，请按箭头返回' :
+          salvage.status === 'boarding' ? '圈内累计登舰 ' + salvage.evac.progress.toFixed(1) + '/3 秒 · 可以继续作战' : '接应途中 · ' + Math.ceil(salvage.evac.remaining) + ' 秒' };
+    }
+
+    _interactSalvage(target) {
+      const salvage = this.salvage;
+      if (target.type === 'salvage-exit') {
+        if (salvage.evac) return false;
+        salvage.evac = { exitId: target.id, remaining: 10, progress: 0, duration: 10, boardingDuration: 3 };
+        salvage.status = 'approaching'; salvage.selectedId = target.id;
+        this._queueSalvage(['crawler', 'spitter', 'crawler', 'engineer', 'charger', 'bulwark'], 'evac');
+        this._emit('salvage-call', target, { exitId: target.id, duration: 10, color: '#9fe9d4' });
+      } else if (target.kind === 'drill' && target.status === 'idle') {
+        target.status = 'drilling';
+        this._queueSalvage(['crawler', 'crawler', 'spitter', 'crawler', 'breacher', 'crawler'], 'drill-' + target.id);
+        this._raiseSalvageAlarm(8);
+        this._emit('salvage-source-start', target, { sourceId: target.id, kind: target.kind, duration: target.duration, color: '#9fe9d4' });
+      } else {
+        const quiet = target.kind === 'vault' && target.status === 'locked';
+        if (!this._collectSalvage(target)) return false;
+        if (quiet) this._raiseSalvageAlarm(5);
+      }
+      this._objective(); return true;
+    }
+
+    _salvageSpawnPoint(type) {
+      const salvage = this.salvage, radius = ENEMIES[type].radius;
+      for (let index = 0; index < 24; index++) {
+        const angle = (salvage.spawned * 7 + index * 5 + salvage.seed % 24) * TAU / 24;
+        const reach = 300 + index % 3 * 45;
+        const point = { x: clamp(this.player.x + Math.cos(angle) * reach, radius + 30, this.world.width - radius - 30),
+          y: clamp(this.player.y + Math.sin(angle) * reach, radius + 30, this.world.height - radius - 30) };
+        if (distance(point, this.player) < 260 || this.obstacles.some(rock => distance(point, rock) < rock.radius + radius + 12) ||
+          this.enemies.some(enemy => enemy.hp > 0 && distance(point, enemy) < enemy.radius + radius + 12)) continue;
+        return point;
+      }
+      return null;
+    }
+
+    _updateSalvage(dt) {
+      const salvage = this.salvage;
+      if (!salvage || this.phase !== 'playing') return;
+      this.pressurePhase = salvage.evac ? 'evac' : salvage.pending.length || this.enemies.some(enemy => enemy.hp > 0) ? 'pressure' : 'recovery';
+      for (const source of salvage.sources) {
+        source.hitFlash = Math.max(0, source.hitFlash - dt);
+        if (source.kind === 'vault') source.quietTimer = Math.max(0, source.quietTimer - dt);
+        if (source.kind !== 'drone' || source.status !== 'flying') continue;
+        let travel = source.speed * dt;
+        while (travel > 0) {
+          const point = source.path[source.pathIndex], dx = point.x - source.x, dy = point.y - source.y, gap = vectorLength(dx, dy);
+          const amount = Math.min(travel, gap);
+          if (gap > 0) { source.x += dx / gap * amount; source.y += dy / gap * amount; source.angle = Math.atan2(dy, dx); }
+          travel -= amount;
+          if (gap <= amount + 1e-9) source.pathIndex = (source.pathIndex + 1) % source.path.length;
+        }
+      }
+      salvage.spawnTimer = Math.max(0, salvage.spawnTimer - dt);
+      if (salvage.pending.length && salvage.spawnTimer === 0 && this.enemies.filter(enemy => enemy.hp > 0).length < 14) {
+        const ticket = salvage.pending[0], point = this._salvageSpawnPoint(ticket.type);
+        const enemy = point && this.spawnEnemy(ticket.type, point);
+        if (enemy) { salvage.pending.shift(); salvage.spawned++; enemy.salvageReason = ticket.reason; salvage.spawnTimer = 1.7; }
+        else salvage.spawnTimer = .25;
+      }
+      if (salvage.alertLevel >= 3) {
+        salvage.hazardTimer = Math.max(0, salvage.hazardTimer - dt);
+        if (salvage.hazardTimer === 0 && this.hazards.filter(hazard => hazard.salvageScan && !hazard.resolved).length < 8) {
+          salvage.hazardTimer = 9;
+          this._addHazard('blast', this.player.x, this.player.y, 85, 1.15, 14,
+            { owner: 'environment', salvageScan: true, enemyDamage: 45, color: '#ffc18a', name: '警戒扫描', hint: '扫描锁定旧位置；在圈亮起前移出预警边界。' });
+        }
+      }
+    }
+
+    _finishSalvageStep(dt) {
+      const salvage = this.salvage;
+      if (!salvage || this.phase !== 'playing') return;
+      for (const source of salvage.sources) {
+        if (source.kind !== 'drill' || source.status !== 'drilling' || distance(this.player, source) > source.workRadius) continue;
+        source.progress = Math.min(source.duration, source.progress + dt);
+        if (source.duration - source.progress < 1e-9) source.progress = source.duration;
+        if (source.progress === source.duration && this._collectSalvage(source)) this._raiseSalvageAlarm(8);
+      }
+      if (!salvage.evac) return;
+      const evac = salvage.evac, exit = salvage.exits.find(item => item.id === evac.exitId);
+      let boardingTime = dt;
+      if (salvage.status === 'approaching') {
+        const remaining = evac.remaining;
+        evac.remaining = Math.max(0, evac.remaining - dt);
+        if (evac.remaining < 1e-9) evac.remaining = 0;
+        if (evac.remaining > 0) return;
+        salvage.status = 'boarding'; boardingTime = Math.max(0, dt - remaining);
+        this._emit('salvage-arrive', exit, { exitId: exit.id, color: '#9fe9d4' });
+      }
+      if (salvage.status !== 'boarding' || distance(this.player, exit) > exit.radius) return;
+      evac.progress = Math.min(evac.boardingDuration, evac.progress + boardingTime);
+      if (evac.boardingDuration - evac.progress < 1e-9) evac.progress = evac.boardingDuration;
+      if (evac.progress === evac.boardingDuration) this._finishSalvage();
+    }
+
+    _finishSalvage() {
+      const salvage = this.salvage;
+      if (!salvage || this.phase !== 'playing' || this.player.hp <= 0 || salvage.status !== 'boarding' || salvage.evac.progress < salvage.evac.boardingDuration) return false;
+      salvage.settled = salvage.carried; salvage.carried = 0; salvage.bonus = salvage.settled * 80;
+      salvage.status = salvage.settled ? 'extracted' : 'withdrawn'; this.score += salvage.bonus; this.phase = 'won';
+      salvage.pending = []; this.bullets = []; this.hazards = []; this.pickups = [];
+      this.echoBursts = []; this._clearAwakeningState(); this.dashMarkedIds.clear(); this.phaseDashRefund = 0;
+      this.reactor.timer = 0; this.player.dashTimer = 0;
+      this._clearBattlefield(); this._clearStarline(); this._clearSecretTechniques();
+      this.evolutionState = { breachTimer: 0, echoes: [] }; this.tactical = { decoy: null, mine: null, cooldown: 0 };
+      this._objective();
+      this._emit(salvage.settled ? 'salvage-complete' : 'salvage-withdraw', this.player, { samples: salvage.settled, bonus: salvage.bonus, color: '#9fe9d4' });
+      if (salvage.settled) this._emit('win', this.player);
+      return true;
     }
 
     _configureVoyage(options) {
@@ -390,20 +660,21 @@
 
     _configureBattlefield() {
       this.battlefield = { props: [], mines: [], fractures: 0, detonations: 0, captures: 0 };
-      const positions = [{ x: 550, y: 760 }, { x: 1150, y: 760 }];
+      const positions = this.salvage ? [{ x: 780, y: 1580 }, { x: 1440, y: 1280 }, { x: 1740, y: 820 }, { x: 2200, y: 1050 }] : [{ x: 550, y: 760 }, { x: 1150, y: 760 }];
       for (const point of positions) {
         if (this.obstacles.some(rock => distance(rock, point) < rock.radius + 38)) continue;
         this.battlefield.props.push({ id: this._id(), kind: 'capacitor', ...point, radius: 20, hp: 50, maxHp: 50,
           status: 'idle', friendly: false, remaining: 0, duration: 0, blastRadius: 125, damageEnemy: 140, damagePlayer: 22 });
       }
       this.obstacles.filter(rock => distance(rock, this.player) > 260 &&
-        !positions.some(point => distance(rock, point) < rock.radius + 90)).slice(0, 3)
+        !positions.some(point => distance(rock, point) < rock.radius + 90)).slice(0, this.salvage ? 6 : 3)
         .forEach(rock => Object.assign(rock, { fragile: true, hp: 95, maxHp: 95 }));
     }
 
     _fieldCount(name) {
       this.battlefield[name]++;
       if (this.voyage) this.voyage.fieldStats[name]++;
+      if (this.salvage) this.salvage.fieldStats[name]++;
     }
 
     _damageCover(rock, amount) {
@@ -472,6 +743,10 @@
             if (this.phase !== 'playing') break;
             if (enemy.hp > 0 && distance(field, enemy) <= field.blastRadius + enemy.radius && visible(enemy))
               this._damageEnemy(enemy, field.damageEnemy * (enemy.type === 'boss' ? .5 : 1));
+          }
+          if (this.salvage) for (const source of this.salvage.sources) {
+            if (this.phase !== 'playing') break;
+            if (source.hp > 0 && distance(field, source) <= field.blastRadius + source.radius && visible(source)) this._damageSalvageSource(source, field.damageEnemy);
           }
           for (const rock of blockers) {
             if (this.phase !== 'playing') break;
@@ -1259,6 +1534,7 @@
       if (this.phase !== 'ready') return false;
       this.phase = 'playing';
       this._emit('start', this.player);
+      if (this.salvage) this._emit('salvage-start', this.player, { seed: this.salvage.seed, color: this.map.color });
       return true;
     }
 
@@ -1380,6 +1656,16 @@
     }
 
     _objective() {
+      if (this.salvage) {
+        const salvage = this.salvage, level = ['I', 'II', 'III', 'IV'][salvage.alertLevel - 1];
+        const drill = salvage.sources.find(source => source.status === 'drilling' && distance(this.player, source) <= source.workRadius);
+        const prefix = '样本 ' + salvage.carried + ' · 警戒 ' + level;
+        this.currentObjective = salvage.status === 'extracted' ? '回收成功 · 样本 ' + salvage.settled : salvage.status === 'withdrawn' ? '安全撤回 · 未带回样本' :
+          salvage.status === 'failed' ? '回收失败 · 丢失样本 ' + salvage.lostSamples : salvage.status === 'approaching' ? prefix + ' · 接应 ' + Math.ceil(salvage.evac.remaining) + 's' :
+          salvage.status === 'boarding' ? prefix + ' · 登舰 ' + salvage.evac.progress.toFixed(1) + '/3s' :
+          drill ? prefix + ' · 钻探 ' + drill.progress.toFixed(1) + '/8s' : prefix + ' · 自选目标，随时撤离';
+        return;
+      }
       if (this.voyage) {
         const voyage = this.voyage, room = voyage.room, target = this.voyageTarget();
         this.currentObjective = this.phase === 'won' ? '星海远航完成 · 航界裂口已封闭' : this.phase === 'lost' ? '远航中断 · 第 ' + voyage.node + '/7 节点' :
@@ -1496,11 +1782,11 @@
       this._updateAwakenings(dt);
       if (this.phase !== 'playing') return;
       if (input.shoot) this._shoot();
-      if (!this.trial && !this.voyage) this._updateContracts(dt);
+      if (!this.trial && !this.voyage && !this.salvage) this._updateContracts(dt);
       this._updateEncounters(dt, moveStart);
       this._updateEchoes(dt);
       if (this.phase !== 'playing') return;
-      if (!this.trial && !this.voyage) this._updateRelays(dt);
+      if (!this.trial && !this.voyage && !this.salvage) this._updateRelays(dt);
       this._spawnDirector(dt);
       this._updateEnemies(dt);
       if (this.phase !== 'playing') return;
@@ -1508,12 +1794,14 @@
       if (this.phase !== 'playing') return;
       this._updateStarline();
       if (this.phase !== 'playing') return;
-      if (!this.trial && !this.voyage) this._updateSectorThreat(dt);
+      if (!this.trial && !this.voyage && !this.salvage) this._updateSectorThreat(dt);
       this._updateHazards(dt);
       if (this.phase !== 'playing') return;
       this._updateBattlefield(dt);
       if (this.phase !== 'playing') return;
       this._updateBullets(dt, dashTime);
+      if (this.phase !== 'playing') return;
+      this._finishSalvageStep(dt);
       if (this.phase !== 'playing') return;
       this._finishTrialWave();
       if (this.phase !== 'playing') return;
@@ -1851,7 +2139,8 @@
         dy > 0 ? (this.world.height - startY) / dy : dy < 0 ? -startY / dy : Infinity);
       let obstacleId = null;
       const fields = this.battlefield ? [...this.battlefield.props, ...this.battlefield.mines].filter(field => field.status === 'idle' && field.hp > 0) : [];
-      for (const target of [...this.obstacles, ...this.enemies.filter(enemy => enemy.hp > 0), ...fields]) {
+      const sources = this.salvage ? this.salvage.sources.filter(source => source.hp > 0 && ['locked', 'flying'].includes(source.status)) : [];
+      for (const target of [...this.obstacles, ...this.enemies.filter(enemy => enemy.hp > 0), ...fields, ...sources]) {
         const contact = this._segmentHit(startX, startY, dx, dy, target, 3);
         if (contact !== null && contact <= amount) { amount = contact; obstacleId = target.type === 'rock' ? target.id : null; }
       }
@@ -1873,7 +2162,8 @@
       if (boundary < amount) { amount = Math.max(0, boundary); explodes = false; }
       // This is a snapshot of current silhouettes, not a prediction of enemy movement.
       const fields = this.battlefield ? [...this.battlefield.props, ...this.battlefield.mines].filter(field => field.status === 'idle' && field.hp > 0) : [];
-      for (const target of [...this.obstacles, ...this.enemies.filter(enemy => enemy.hp > 0), ...fields]) {
+      const sources = this.salvage ? this.salvage.sources.filter(source => source.hp > 0 && ['locked', 'flying'].includes(source.status)) : [];
+      for (const target of [...this.obstacles, ...this.enemies.filter(enemy => enemy.hp > 0), ...fields, ...sources]) {
         const contact = this._segmentHit(startX, startY, dx, dy, target, 7);
         if (contact !== null && contact <= amount) { amount = contact; explodes = true; }
       }
@@ -2009,6 +2299,7 @@
         this._damageEnemy(enemy, damage);
       }
       if (this.phase === 'playing') this._captureBattlefield(origin, radius);
+      if (this.phase === 'playing') this._unlockSalvageVaults(origin);
       if (this.phase === 'playing' && this.relics.includes('echo-pulse')) this.echoBursts.push({ x: origin.x, y: origin.y, radius, damage: damage * .65, remaining: .65 });
       if (this.phase === 'playing') this._voyagePulse(origin);
       return true;
@@ -2105,6 +2396,10 @@
     }
 
     interactionState() {
+      if (this.salvage) {
+        const state = this._salvageInteraction();
+        if (state) return state;
+      }
       if (this.voyage) {
         const exit = this.voyage.room.exit, near = distance(this.player, exit) <= 94;
         return { target: exit, action: this.phase === 'playing' && exit.ready && near ? '撤离' : '',
@@ -2188,6 +2483,7 @@
       if (this.phase !== 'playing') return false;
       const { target, action } = this.interactionState();
       if (!action) return false;
+      if (this.salvage && ['salvage-source', 'salvage-exit'].includes(target.type)) return this._interactSalvage(target);
       if (target.type === 'voyage-exit') return this._finishVoyageRoom();
       if (target.type === 'cargo') {
         if (!this.delivery || this.delivery.carriedId || !['source', 'dropped'].includes(target.status) || target.pickupLock > 0 || this.player.dashTimer > 1e-9) return false;
@@ -2350,6 +2646,7 @@
     }
 
     _spawnDirector(dt) {
+      if (this.salvage) { this._updateSalvage(dt); return; }
       if (this.voyage) { this._updateVoyage(dt); return; }
       if (this.trial) { this._updateTrial(dt); return; }
       if (this.encounters.some(encounter => encounter.status === 'active')) {
@@ -2402,13 +2699,14 @@
         if (distance(point, this.player) <= safeDistance || this.obstacles.some(rock => distance(point, rock) < rock.radius + data.radius)) return null;
       }
       const voyageDifficulty = this.voyage && VOYAGE_DIFFICULTIES.find(item => item.id === this.voyage.difficulty);
-      const scale = type === 'boss' || type === 'anchor' ? 1 : this.voyage ?
+      const salvageDifficulty = this.salvage && SALVAGE_DIFFICULTIES.find(item => item.id === this.salvage.difficulty);
+      const scale = type === 'boss' || type === 'anchor' ? 1 : this.salvage ? salvageDifficulty.hp : this.voyage ?
         (1 + (this.voyage.node - 1) * .08) * (ordinary ? voyageDifficulty.hp * (this.voyage.room.risk === 'surge' ? 1.15 : 1) : 1) :
         (1 + this.completedRelays * 0.2 + Math.min(0.8, elapsed / 900)) * (ordinary && this.campaign?.crisisId === 'armored' ? 1.2 : 1);
       const enemy = {
         id: this._id(), type, x: point.x, y: point.y, radius: data.radius,
         hp: Math.round(data.hp * scale), maxHp: Math.round(data.hp * scale),
-        speed: data.speed * (ordinary && this.campaign?.crisisId === 'pursuit' ? 1.14 : 1), damage: data.damage * (voyageDifficulty ? voyageDifficulty.damage : 1), xp: data.xp, angle: 0,
+        speed: data.speed * (ordinary && this.campaign?.crisisId === 'pursuit' ? 1.14 : 1), damage: data.damage * (voyageDifficulty ? voyageDifficulty.damage : salvageDifficulty ? salvageDifficulty.damage : 1), xp: data.xp, angle: 0,
         attackTimer: 1 + this.random(), contactTimer: 0, stunTimer: 0,
         windup: 0, chargeTimer: 0, chargeX: 0, chargeY: 0, stage: 1, attackCount: 0,
         recoveryTimer: 0, knockbackTimer: 0, knockbackX: 0, knockbackY: 0, attackKind: '', phaseMarkTimer: 0
@@ -3064,6 +3362,11 @@
               const t = this._segmentHit(bullet.x, bullet.y, dx, dy, field, bullet.radius);
               if (t !== null) hits.push({ t, field: true, target: field });
             }
+            if (this.salvage) for (const source of this.salvage.sources) {
+              if (source.hp <= 0 || !['locked', 'flying'].includes(source.status) || bullet.hitIds.includes(source.id)) continue;
+              const t = this._segmentHit(bullet.x, bullet.y, dx, dy, source, bullet.radius);
+              if (t !== null) hits.push({ t, source: true, target: source });
+            }
             for (const enemy of this.enemies) {
               if (enemy.hp <= 0 || bullet.hitIds.includes(enemy.id)) continue;
               const t = this._segmentHit(bullet.x, bullet.y, dx, dy, enemy, bullet.radius);
@@ -3086,6 +3389,16 @@
           for (const hit of hits) {
             if (this.phase !== 'playing') break;
             if (hit.obstacle && bullet.owner === 'player' && hit.target.fragile) this._damageCover(hit.target, bullet.damage);
+            if (hit.source) {
+              if (hit.target.hp <= 0 || !['locked', 'flying'].includes(hit.target.status)) continue;
+              const impact = { x: bullet.x + dx * hit.t, y: bullet.y + dy * hit.t };
+              if (bullet.kind === 'grenade') { bullet.x = impact.x; bullet.y = impact.y; this._burstGrenade(bullet); break; }
+              this._damageSalvageSource(hit.target, bullet.damage);
+              if (bullet.kind === 'starline') this._placeStarPin(bullet, impact.x, impact.y);
+              bullet.hitIds.push(hit.target.id);
+              if (bullet.pierce > 0) { bullet.pierce--; continue; }
+              bullet.lifetime = 0; break;
+            }
             if (hit.field) {
               if (hit.target.status !== 'idle' || hit.target.hp <= 0) continue;
               const impact = { x: bullet.x + dx * hit.t, y: bullet.y + dy * hit.t };
@@ -3212,6 +3525,7 @@
 
     _burstGrenade(bullet) {
       if (bullet.exploded || this.phase !== 'playing') return;
+      const blockers = this.salvage ? [...this.obstacles] : [];
       bullet.exploded = true;
       bullet.lifetime = 0;
       this._emit('grenade-burst', bullet, { radius: bullet.blastRadius, color: bullet.color });
@@ -3223,6 +3537,11 @@
         }
         for (const rock of [...this.obstacles]) if (rock.fragile && distance(bullet, rock) <= bullet.blastRadius + rock.radius)
           this._damageCover(rock, bullet.damage);
+      }
+      if (this.salvage) for (const source of this.salvage.sources) {
+        if (this.phase !== 'playing') break;
+        if (source.hp > 0 && distance(bullet, source) <= bullet.blastRadius + source.radius &&
+          !blockers.some(rock => this._segmentHit(bullet.x, bullet.y, source.x - bullet.x, source.y - bullet.y, rock, 0) !== null)) this._damageSalvageSource(source, bullet.damage);
       }
       for (const enemy of this.enemies) {
         if (this.phase !== 'playing') break;
@@ -3323,7 +3642,7 @@
         this._objective();
         return;
       }
-      if (enemy.type === 'boss') {
+      if (enemy.type === 'boss' && !this.salvage) {
         if (this.voyage) { this._finishVoyageRoom(true); return; }
         if (this.campaign) { this._finishCampaignStage(enemy); return; }
         this.phase = 'won';
@@ -3361,6 +3680,12 @@
       this._emit('damage', player, { amount: Math.round(damage) });
       if (player.hp <= 0) {
         this.phase = 'lost';
+        if (this.salvage) {
+          this.salvage.status = 'failed'; this.salvage.lostSamples = this.salvage.carried; this.salvage.carried = 0; this.salvage.pending = [];
+          this.bullets = []; this.pickups = []; this.echoBursts = [];
+          this._clearAwakeningState(); this.dashMarkedIds.clear(); this.phaseDashRefund = 0; this.reactor.timer = 0; player.dashTimer = 0;
+          this._emit('salvage-failed', player, { samples: this.salvage.lostSamples });
+        }
         if (this.voyage) {
           this.voyage.status = 'failed'; this.voyage.routeChoices = []; this.voyage.deviceChoices = []; this.voyage.shopChoices = [];
           this._clearCampaignCombat(); this._clearVoyageEffects();
@@ -3469,5 +3794,5 @@
   }
 
   return { Game, WEAPONS, UPGRADES, EVOLUTIONS, ENEMIES, RELICS, TACTICS, MAPS, SECRETS, TRIAL_WAVES, CAMPAIGN_DOCTRINES, CAMPAIGN_AWAKENINGS, CAMPAIGN_CRISES, CAMPAIGN_SUPPLIES, CAMPAIGN_NEXUS,
-    VOYAGE_DEVICES, VOYAGE_RESONANCES, VOYAGE_DIFFICULTIES, VOYAGE_ROOMS, VOYAGE_BIOMES, BATTLEFIELD_GUIDE };
+    VOYAGE_DEVICES, VOYAGE_RESONANCES, VOYAGE_DIFFICULTIES, VOYAGE_ROOMS, VOYAGE_BIOMES, BATTLEFIELD_GUIDE, SALVAGE_DIFFICULTIES, SALVAGE_MAP };
 });

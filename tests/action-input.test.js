@@ -47,7 +47,7 @@ function ui(map = 'frontier') {
     $: element, setText: (id, value) => { element(id).textContent = String(value); },
     save: (...args) => saved.push(args), notify: message => notifications.push(message), act: action => action(),
     profiles: { recordCoach: () => saved.push(['coach', 'done']) },
-    closeMap() {}, tone() {}, renderer: { drawMinimap() {} },
+    closeMap() {}, tone() {}, renderer: { drawMinimap() {} }, FrontierTouch: require('../touch-actions.js'),
     document: { createElement: () => { const result = node(); created.push(result); return result; } }
   };
   state.window = { matchMedia: () => ({ matches: state.coarse }) };

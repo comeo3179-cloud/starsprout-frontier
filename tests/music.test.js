@@ -115,3 +115,31 @@ test('actual voyage map IDs have distinct musical phrases while keeping one boun
     assert.equal(signatures.size, 3);
   }
 });
+
+test('the recovery map has its own phrase and evacuation changes tempo through the same bounded scheduler', () => {
+  const signatures = new Set();
+  for (const scene of ['explore', 'combat', 'evac']) {
+    const f = fixture(); f.audio.setScene(scene, 'salvage'); assert.equal(f.contextCount, 0); f.audio.play('click');
+    const timer = [...f.timers.keys()][0]; f.audio.setScene(scene, 'salvage'); assert.ok(f.timers.has(timer));
+    for (let i = 0; i < 250; i++) { f.tick(60); assert.equal(f.timers.size, 1); assert.ok(f.audio.musicVoices.size <= 12 && f.audio.voices <= 48); }
+    const notes = f.audio.context.nodes.filter(node => node.frequency && node.started !== undefined && node.started > .01);
+    signatures.add(JSON.stringify(notes.slice(0, 35).map(node => [node.type, node.started, node.frequency.calls[0][1]])));
+    f.audio.setScene('evac', 'salvage'); assert.equal(f.timers.size, 1);
+    f.hide(true); f.tick(100); assert.equal(f.timers.size, 0); assert.equal(f.audio.musicVoices.size, 0);
+    f.hide(false); assert.equal(f.timers.size, 1); f.audio.setMusicEnabled(false); f.tick(100); assert.equal(f.audio.musicVoices.size, 0);
+    f.audio.setMusicEnabled(true); assert.equal(f.timers.size, 1); f.audio.setScene('silent'); f.tick(100);
+    assert.equal(f.timers.size, 0); assert.equal(f.audio.musicVoices.size, 0);
+  }
+  assert.equal(signatures.size, 3);
+  const unavailable = fixture({ available: false }); unavailable.audio.setScene('evac', 'salvage'); unavailable.audio.play('salvage-call'); assert.equal(unavailable.timers.size, 0);
+  const suspended = fixture({ state: 'suspended' }); suspended.audio.setScene('evac', 'salvage'); suspended.audio.play('click'); assert.equal(suspended.timers.size, 0);
+});
+
+test('evacuation, alarm and EMP field chains share the existing voice cap and clean up after mute', () => {
+  const f = fixture(); f.audio.setScene('evac', 'salvage'); f.audio.play('click');
+  for (let i = 0; i < 20; i++) {
+    for (const [kind, arg] of [['salvage-alert', 4], ['salvage-source-open', 'drone'], ['salvage-vault-unlock', 'vault'], ['salvage-collected', 'drill'], ['salvage-arrive', 0], ['field-capture', 'friendly'], ['field-arm', 'friendly'], ['field-burst', 'friendly'], ['skill', 0], ['shield-open', 0]]) f.audio.play(kind, arg);
+    assert.ok(f.audio.voices <= 48 && f.audio.musicVoices.size <= 12); assert.equal(f.timers.size, 1); f.tick(60);
+  }
+  f.audio.setEnabled(false); f.tick(1000); assert.equal(f.timers.size, 0); assert.equal(f.audio.musicVoices.size, 0); assert.equal(f.audio.voices, 0);
+});
