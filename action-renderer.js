@@ -11,7 +11,7 @@
   const doctrineColors = { skirmisher: '#8cf5d3', marksman: '#ffd18c', conductor: '#c9b3ff' };
   const voyageColors = { cosmos: '#c8b7ff', forge: '#ffc88c', tide: '#94eadf' };
   const voyageDeviceColors = { afterimage: '#8fffe0', needles: '#b0ffe6', mirror: '#ffd9a2', sentry: '#fff0b7', well: '#b6c5ff', battery: '#d5baff' };
-  const salvageColors = { vault: '#f4cf96', drill: '#9ce8d3', drone: '#a9d6ff', exit: '#c7f4df' };
+  const salvageColors = { vault: '#f4cf96', drill: '#9ce8d3', drone: '#a9d6ff', exit: '#c7f4df', cargo: '#ffc18a' };
 
   function path(ctx, points, close = true) {
     ctx.beginPath();
@@ -227,6 +227,13 @@
           case 'salvage-call': case 'salvage-arrive':
             this.rings.push({ x, y, radius: event.type === 'salvage-arrive' ? 100 : 45, age: 0, life: .5, color: '#c7f4df' });
             this.burst(x, y, '#c7f4df', 6, 70, .3);
+            break;
+          case 'salvage-cargo-picked': case 'salvage-cargo-dropped':
+            this.rings.push({ x, y, radius: 30, age: 0, life: .35, color: salvageColors.cargo });
+            this.burst(x, y, salvageColors.cargo, 5, 60, .3);
+            break;
+          case 'salvage-cargo-pulse':
+            this.rings.push({ x, y, radius: 130, age: 0, life: .65, color: salvageColors.cargo });
             break;
           case 'field-arm':
             this.burst(x, y, event.friendly ? '#8debd1' : '#ffc187', 4, 50, .25);
@@ -724,6 +731,11 @@
       for (const obstacle of game.obstacles || []) if (this.visible(obstacle.x, obstacle.y, obstacle.radius + 30)) actors.push({ y: obstacle.y, kind: 'rock', data: obstacle });
       for (const field of [...(game.battlefield?.props || []), ...(game.battlefield?.mines || [])]) if (field.status !== 'spent' && this.visible(field.x, field.y, (field.radius || 20) + 30)) actors.push({ y: field.y, kind: 'field', data: field });
       for (const source of game.salvage?.sources || []) if (this.visible(source.x, source.y, source.radius + 35)) actors.push({ y: source.y, kind: 'salvage', data: source });
+      const cargo = game.salvage?.hotCargo;
+      if (cargo && ['ground', 'dropped', 'carried'].includes(cargo.status)) {
+        const carried = cargo.status === 'carried', x = carried ? p.x : cargo.x, y = carried ? p.y : cargo.y;
+        if (this.visible(x, y, 55)) actors.push({ y: y + (carried ? 1 : 0), kind: 'salvage-cargo', data: cargo });
+      }
       for (const enemy of game.enemies || []) if (this.visible(enemy.x, enemy.y, enemy.radius + 50)) actors.push({ y: enemy.y, kind: 'enemy', data: enemy });
       actors.push({ y: p.y, kind: 'player', data: p });
       for (const ghost of this.ghosts) {
@@ -737,6 +749,7 @@
         if (actor.kind === 'rock') this.drawRock(actor.data);
         else if (actor.kind === 'field') this.drawBattlefieldObject(actor.data);
         else if (actor.kind === 'salvage') this.drawSalvageSource(actor.data);
+        else if (actor.kind === 'salvage-cargo') this.drawSalvageCargo(actor.data, p);
         else if (actor.kind === 'encounter') this.drawEncounter(actor.data, p);
         else if (actor.kind === 'enemy') this.drawEnemy(actor.data);
         else this.drawPlayer(actor.data);
@@ -1254,9 +1267,28 @@
         }
         ctx.restore();
         if (this.interaction?.target === exit && !['extracted', 'withdrawn', 'failed'].includes(state.status)) {
-          const text = boarding ? '入圈登舰 · ' + Math.round(state.evac.progress / state.evac.boardingDuration * 100) + '%' : active ? '接应 ' + Math.ceil(state.evac.remaining) + 's' : state.evac ? '接应已锁定另一处' : this.interactionLabel(exit, '呼叫接应');
+          const text = boarding ? '入圈登舰 · ' + Math.round(state.evac.progress / state.evac.boardingDuration * 100) + '%' : active ? '接应 ' + Math.ceil(state.evac.remaining) + 's' : state.evac ? '接应已锁定另一处' : this.interactionLabel(exit, '呼叫接应') + (exit.arrivalDuration ? ' · ' + exit.arrivalDuration + 's' : '');
           this.drawEncounterLabel(text, exit.x, exit.y - exit.radius - 25 / this.scale, color, true);
         }
+      }
+    }
+
+    drawSalvageCargo(cargo, player) {
+      if (!['ground', 'dropped', 'carried'].includes(cargo.status)) return;
+      const ctx = this.ctx, carried = cargo.status === 'carried', color = salvageColors.cargo;
+      ctx.save(); ctx.translate(carried ? player.x : cargo.x, carried ? player.y : cargo.y);
+      if (carried) { ctx.translate(-25 / this.scale, -29 / this.scale); ctx.scale(.55 / this.scale, .55 / this.scale); }
+      else circle(ctx, 0, 7, cargo.radius + 5, '#15262c88');
+      box(ctx, -15, -11, 30, 22, 3, '#23323c', color);
+      ctx.fillStyle = '#53616a'; ctx.fillRect(-10, -7, 4, 14); ctx.fillRect(6, -7, 4, 14);
+      box(ctx, -4, -6, 8, 12, 1, '#17282f', color); circle(ctx, 0, -2, 1.5, '#ffe5b8');
+      path(ctx, [[-6, -12], [-6, -16], [6, -16], [6, -12]], false); ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
+      if (carried) {
+        ctx.beginPath(); ctx.arc(0, 0, 22, -Math.PI / 2, -Math.PI / 2 + TAU * clamp(cargo.pulseRemaining / cargo.pulseInterval, 0, 1)); ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.stroke();
+      } else if (cargo.status === 'dropped') circle(ctx, 0, 0, 26, null, color + '88', 1.2 / this.scale);
+      ctx.restore();
+      if (!carried && this.interaction?.target === cargo && this.interaction.action && Math.hypot(player.x - cargo.x, player.y - cargo.y) <= 94) {
+        this.drawEncounterLabel(this.interactionLabel(cargo, '拾取黑匣子'), cargo.x, cargo.y - cargo.radius - 26 / this.scale, color, true);
       }
     }
 
@@ -2717,7 +2749,7 @@
 
     updatePointerHud() {
       const parent = this.canvas?.parentElement;
-      const hudSelector = '.player-hud,.map-hud,.objective-hud,.weapons-hud,.ammo-hud,.skill-hud,.active-reload,.touch-stick,#touch-interact,.fullscreen-controls,.combat-notices,.event-banner,.notification.visible,.interaction-hint,.boss-hud,.field-coach';
+      const hudSelector = '.player-hud,.map-hud,.objective-hud,#cargo-control,.weapons-hud,.ammo-hud,.skill-hud,.active-reload,.touch-stick,#touch-interact,.fullscreen-controls,.combat-notices,.event-banner,.notification.visible,.interaction-hint,.boss-hud,.field-coach';
       if (parent && !this.pointerHudObserver && window.MutationObserver) {
         this.pointerHudPending = new Set();
         this.pointerHudChanged = records => {
@@ -2886,6 +2918,17 @@
           labels.push({ id: source.id, x, y, color, name: source.name.replace('保险箱', '箱').replace('采样井', '井').replace('运输无人机', '运输机'), status });
         }
       }
+      const cargo = state.hotCargo, cargoVisible = cargo && ['ground', 'dropped', 'carried'].includes(cargo.status), cargoPoint = cargoVisible ? cargo.status === 'carried' ? game.player : cargo : null;
+      if (cargoVisible) {
+        const x = cargoPoint.x * scale, y = cargoPoint.y * scale, carried = cargo.status === 'carried', color = salvageColors.cargo;
+        polygon(ctx, x, y, size, 4, Math.PI / 4); ctx.fillStyle = '#25343c'; ctx.fill(); ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
+        circle(ctx, x, y, size + (carried ? 4 : 2), null, color, 1.3);
+        if (target?.id === cargo.id) circle(ctx, x, y, size + 6, null, '#ffe5b8', 1.5);
+        if (detailed) {
+          const status = carried ? '携带 · 广播' + Math.ceil(cargo.pulseRemaining) + 's' : cargo.status === 'dropped' ? '已放下' : '待拾取';
+          labels.push({ id: cargo.id, x, y, color, name: cargo.name, status, priority: 1, texts: [cargo.name + ' · ' + status, cargo.name + ' · ' + (carried ? '携带' : status)] });
+        }
+      }
       for (const exit of state.exits) {
         const x = exit.x * scale, y = exit.y * scale, active = state.evac?.exitId === exit.id, boarding = active && state.status === 'boarding', color = active ? '#d7ffeb' : '#8aacab';
         polygon(ctx, x, y, size + 2, 3, -Math.PI / 2); ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
@@ -2898,20 +2941,23 @@
         }
         if (detailed) {
           const status = active ? boarding ? '登舰' + Math.round(state.evac.progress / state.evac.boardingDuration * 100) + '%' : '接应' + Math.ceil(state.evac.remaining) + 's' : state.evac ? '未选' : '可呼叫';
-          labels.push({ id: exit.id, x, y, color, name: exit.name.replace('侧接应点', '接应'), status });
+          const name = exit.name.replace('侧接应点', '接应'), cover = exit.coverLabel?.includes('空旷') ? '空旷' : '掩体';
+          const texts = exit.arrivalDuration ? [name + ' · ' + exit.arrivalDuration + 's · ' + cover + (active ? ' · ' + status : ''), name.replace('接应', '') + exit.arrivalDuration + 's·' + cover] : null;
+          labels.push({ id: exit.id, x, y, color, name, status, priority: texts ? 2 : 0, texts });
         }
       }
       if (!detailed) return;
-      const world = game.world || this.world, placed = [], glyphs = [...state.sources, ...state.exits, ...(game.stations || []), game.player].map(point => ({ left: point.x * scale - size - 3, right: point.x * scale + size + 3, top: point.y * scale - size - 3, bottom: point.y * scale + size + 3 }));
+      const world = game.world || this.world, placed = [], glyphs = [...state.sources, ...state.exits, ...(cargoPoint ? [cargoPoint] : []), ...(game.stations || []), game.player].map(point => ({ left: point.x * scale - size - 3, right: point.x * scale + size + 3, top: point.y * scale - size - 3, bottom: point.y * scale + size + 3 }));
       bounds ||= { left: 0, right: world.width * scale, top: 0, bottom: world.height * scale };
       ctx.font = '600 10px "Microsoft YaHei", sans-serif'; ctx.textAlign = 'center';
-      labels.sort((a, b) => (b.id === target?.id) - (a.id === target?.id));
+      labels.sort((a, b) => (b.id === target?.id) - (a.id === target?.id) || (b.priority || 0) - (a.priority || 0));
       for (const label of labels) {
-        const texts = label.id === target?.id ? [label.name + ' · ' + label.status, label.name] : [label.name];
+        const texts = label.texts || (label.id === target?.id ? [label.name + ' · ' + label.status, label.name] : [label.name]);
         let result;
         for (const text of texts) {
           const width = ctx.measureText(text).width + 6;
-          for (const [dx, dy] of [[0, -20], [0, 23], [width / 2 + 14, 3], [-width / 2 - 14, 3], [0, -38], [0, 41]]) {
+          const offsets = [[0, -20], [0, 23], [width / 2 + 14, 3], [-width / 2 - 14, 3], [0, -38], [0, 41], ...(label.texts ? [[0, -56], [0, -74], [0, -92]] : [])];
+          for (const [dx, dy] of offsets) {
             const x = clamp(label.x + dx, bounds.left + width / 2 + 2, bounds.right - width / 2 - 2), y = label.y + dy;
             const rect = { left: x - width / 2, right: x + width / 2, top: y - 10, bottom: y + 4 };
             if (rect.left < bounds.left || rect.right > bounds.right || rect.top < bounds.top || rect.bottom > bounds.bottom) continue;
@@ -2921,6 +2967,9 @@
           if (result) break;
         }
         if (!result) continue;
+        if (label.texts && Math.hypot(result.x - label.x, result.y - label.y) > 45) {
+          path(ctx, [[label.x, label.y], [result.x, result.y + 6]], false); ctx.strokeStyle = label.color + '55'; ctx.lineWidth = 1; ctx.stroke();
+        }
         placed.push(result.rect); ctx.lineWidth = 3; ctx.strokeStyle = '#172b31'; ctx.strokeText(result.text, result.x, result.y); ctx.fillStyle = label.color; ctx.fillText(result.text, result.x, result.y);
       }
     }

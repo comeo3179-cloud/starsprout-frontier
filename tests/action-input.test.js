@@ -451,3 +451,33 @@ test('reward card drags and cancellations preserve the pending legal reward and 
     f.card.send('click', { detail: 0, pointerType: '' }); assert.equal(f.acquired(), true); assert.equal(f.game.phase, 'playing'); assert.equal(f.calls.length, 1);
   }
 });
+
+test('cargo drop control follows a real pickup and is disabled while the map or pause owns input', () => {
+  const { game, context, element } = ui();
+  game.reset('frontier', { mode: 'salvage', seed: 731 }); game.start();
+  const cargo = game.salvage.hotCargo;
+  context.updateInteraction(); assert.equal(element('cargo-control').classList.contains('hidden'), true);
+  Object.assign(game.player, { x: cargo.x, y: cargo.y });
+  assert.equal(game.interact(), true); assert.equal(cargo.status, 'carried');
+  context.updateInteraction(); assert.equal(element('cargo-control').classList.contains('hidden'), false);
+  assert.equal(element('cargo-drop').disabled, false); assert.match(element('cargo-status').textContent, /480.*12s/);
+  context.screen = 'map'; context.updateInteraction(); assert.equal(element('cargo-drop').disabled, true);
+  context.screen = ''; context.paused = true; context.updateInteraction(); assert.equal(element('cargo-drop').disabled, true);
+  context.paused = false; context.updateInteraction(); assert.equal(element('cargo-drop').disabled, false);
+  context.dropCargo(); context.updateInteraction();
+  assert.equal(cargo.status, 'dropped'); assert.equal(element('cargo-control').classList.contains('hidden'), true);
+});
+
+test('dropping cargo preserves held movement, aim and ammunition instead of clearing combat input', () => {
+  const { game, context } = ui();
+  game.reset('frontier', { mode: 'salvage', seed: 731 }); game.start();
+  const cargo = game.salvage.hotCargo; Object.assign(game.player, { x: cargo.x, y: cargo.y });
+  assert.equal(game.interact(), true);
+  context.touch.moveX = .8; context.touch.moveY = -.3; context.touch.shoot = true;
+  context.keys.add('KeyW'); context.pointer.down = true;
+  const before = { ...context.movement(), ammo: game.player.ammo };
+  context.dropCargo();
+  assert.equal(cargo.status, 'dropped');
+  assert.deepEqual({ ...context.movement(), ammo: game.player.ammo }, before);
+  assert.equal(context.touch.shoot, true); assert.equal(context.pointer.down, true);
+});

@@ -5,9 +5,10 @@
 const fs = require('node:fs'), path = require('node:path'), crypto = require('node:crypto'), assert = require('node:assert/strict');
 const root = path.resolve(__dirname, '..'), enginePath = path.join(root, 'action-engine.js'), { Game } = require(enginePath);
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex'), round = number => +number.toFixed(4);
-const output = path.join(root, 'reports/expansion-6-7/salvage-layout-audit.json'), engineSha256 = hash(fs.readFileSync(enginePath));
+const args = process.argv.slice(2), outputIndex = args.indexOf('--output');
+const output = outputIndex >= 0 ? path.resolve(args[outputIndex + 1]) : path.join(root, 'reports/expansion-6-7/salvage-layout-audit.json'), engineSha256 = hash(fs.readFileSync(enginePath));
 const report = { generatedAt: new Date().toISOString(), engineSha256, scriptSha256: hash(fs.readFileSync(__filename)),
-  method: '256 unique uint32 seed samples, independent 32px cardinal grid with player radius16+4px rock padding and radius+20 world border. Every traversed edge is checked by independently computed segment-circle clearance, not just passable endpoints. Every target center connects by a clear segment to the spawn-connected graph. Drone entire closed path tested for its radius25 plus4px, and player access sampled at <=16px along each segment. Three selected layouts walked by original-stat Game.update normal analog movement; enemies/pending removed once, real cover/fields/sources remain, no teleport/buff/clear cover/dash/shoot. Geometric reachability fixtures, NOT natural victories or proof for all 2^32 seeds.',
+  method: '256 unique uint32 seed samples, independent 32px cardinal grid with player radius16+4px rock padding and radius+20 world border. Every traversed edge is checked by independently computed segment-circle clearance, not just passable endpoints. Every target center connects by a clear segment to the spawn-connected graph. Drone entire closed path tested for its radius25 plus4px, and player access sampled at <=16px along each segment. Unique boundary and narrowest layouts walked by original-stat Game.update normal analog movement; enemies/pending removed once, real cover/fields/sources remain, no teleport/buff/clear cover/dash/shoot. Geometric reachability fixtures, NOT natural victories or proof for all 2^32 seeds.',
   seeds: [], ordinaryMovement: [], failures: [] };
 const save = () => fs.writeFileSync(output, JSON.stringify(report, null, 2) + '\n');
 fs.mkdirSync(path.dirname(output), { recursive: true });
@@ -51,10 +52,10 @@ function graph(game) {
   };
   return { clear, connect, pathTo, reached: queue.length, nodes: cols * rows };
 }
-function targets(game) { return [...game.salvage.sources, ...game.salvage.exits, ...game.stations, ...game.crates]; }
+function targets(game) { return [...game.salvage.sources, ...game.salvage.exits, game.salvage.hotCargo, ...game.stations, ...game.crates]; }
 function audit(seed) {
   const game = new Game({ mode: 'salvage', seed }), geometry = graph(game), checked = [];
-  assert.equal(targets(game).length, 16);
+  assert.equal(targets(game).length, 17);
   for (const target of targets(game)) {
     assert.notEqual(geometry.connect(target), null, `Seed ${seed}: ${target.name || target.kind || target.type} center is reachable`);
     const minRockClearance = Math.min(...game.obstacles.map(rock => Math.hypot(target.x - rock.x, target.y - rock.y) - rock.radius - game.player.radius));
@@ -71,7 +72,7 @@ function audit(seed) {
       assert.notEqual(geometry.connect(p), null, `Seed ${seed}: player can reach drone path segment ${index} point ${at}`); droneAccessPoints++;
     }
   }
-  const geometrySha256 = hash(JSON.stringify({ obstacles: game.obstacles, sources: game.salvage.sources, exits: game.salvage.exits, stations: game.stations, crates: game.crates }));
+  const geometrySha256 = hash(JSON.stringify({ obstacles: game.obstacles, sources: game.salvage.sources, exits: game.salvage.exits, cargo: game.salvage.hotCargo, stations: game.stations, crates: game.crates }));
   return { seed, obstacles: game.obstacles.length, geometrySha256, reachedNodes: geometry.reached, totalNodes: geometry.nodes, targets: checked, droneAccessPoints, droneMinClearance: round(droneMinClearance) };
 }
 function walkLayout(seed) {

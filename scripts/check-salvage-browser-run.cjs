@@ -83,7 +83,7 @@ async function snapshot(page) { return page.evaluate(() => { const g = __salvage
       method: 'Unclipped native rAF intervals during actual playing with hidden overlay; paused decision screens excluded. Automation/screenshots and parallel workloads retained; unpaired desktop observation, not a phone FPS estimate.' };
     if (online) { await Promise.all(responses); for (const item of manifest.files.filter(item => /\.(js|css)$/.test(item.file))) assert.equal(report.browserFiles[item.file], item.sha256); }
     assert.deepEqual(report.errors, []); assert.ok(['extracted', 'withdrawn', 'failed'].includes(report.ending.salvage.status));
-    if (report.ending.salvage.status === 'extracted') { assert.ok(report.ending.salvage.settled > 0); assert.equal(report.events.win, 1); assert.equal(report.ending.salvage.bonus, report.ending.salvage.settled * 80); }
+    if (report.ending.salvage.status === 'extracted') { assert.ok(report.ending.salvage.settled > 0 || report.ending.salvage.cargoBonus > 0); assert.equal(report.events.win, 1); assert.equal(report.ending.salvage.bonus, report.ending.salvage.settled * 80 + report.ending.salvage.cargoBonus); }
     else if (report.ending.salvage.status === 'withdrawn') { assert.equal(report.ending.salvage.bonus, 0); assert.ok(!report.events.win); }
   } catch (error) { report.failure = error.stack; if (page) { report.ending = await snapshot(page).catch(() => null); await shot('failure').catch(() => {}); } process.exitCode = 1; }
   finally { report.wallSeconds = (Date.now() - startWall) / 1000; report.completedAt = new Date().toISOString(); save(); await context.close(); await browser.close(); }

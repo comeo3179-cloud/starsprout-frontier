@@ -200,8 +200,9 @@
             const root = { 'tail-collapse': 392, 'cross-mirror': 440, 'tidal-collapse': 330 }[weapon] || 392;
             [1, 1.5, 2].forEach((ratio, i) => this.note(root * ratio, root * ratio, .26, .035, 'triangle', i * .07)); break;
           }
-          case 'cargo-picked': this.note(330, 660, .2, .04, 'triangle'); this.note(990, 990, .18, .03, 'sine', .08); break;
-          case 'cargo-dropped': this.note(660, 330, .14, .035, 'triangle'); this.noiseBurst(1800, .045, .025); break;
+          case 'salvage-cargo-picked': case 'cargo-picked': this.note(330, 660, .2, .04, 'triangle'); this.note(990, 990, .18, .03, 'sine', .08); break;
+          case 'salvage-cargo-dropped': case 'cargo-dropped': this.note(660, 330, .14, .035, 'triangle'); this.noiseBurst(1800, .045, .025); break;
+          case 'salvage-cargo-pulse': this.note(440, 330, .11, .028, 'triangle'); this.note(660, 495, .11, .028, 'triangle', .14); break;
           case 'cargo-delivered': [392, 587, 784, 1174].forEach((f, i) => this.note(f, f, .35, .035, 'sine', i * .07)); break;
           case 'star-pin': this.note(1450, 850, .065, .022, 'triangle'); break;
           case 'starline-created': this.note(660, 1320, .14, .03, 'sine'); this.note(990, 1485, .13, .025, 'triangle', .03); break;

@@ -204,8 +204,11 @@
       else if (event.type.startsWith('salvage-')) {
         tone(event.type, event.type === 'salvage-alert' ? event.level : event.kind);
         if (event.type === 'salvage-alert') banner('SALVAGE / ALERT ' + event.level, '警戒 ' + ['I', 'II', 'III', 'IV'][event.level - 1] + ' · 新巡防已接近', 1200);
-        else if (event.type === 'salvage-call') banner('SALVAGE / EXTRACTION', '接应已呼叫 · 10 秒后到达', 1200);
+        else if (event.type === 'salvage-call') banner('SALVAGE / EXTRACTION', '接应已呼叫 · ' + event.duration + ' 秒后到达', 1200);
         else if (event.type === 'salvage-arrive') banner('SALVAGE / BOARDING', '接应已到 · 进入撤离圈登舰', 1200);
+        else if (event.type === 'salvage-cargo-picked') $('run-log').textContent = '黑匣子：带回 +480 · 武器伤害 +15% · 每 12 秒暴露，可按 G / 弃货放下';
+        else if (event.type === 'salvage-cargo-dropped') $('run-log').textContent = '黑匣子已放下 · 停止新广播，已来的追兵仍在';
+        else if (event.type === 'salvage-cargo-pulse') $('run-log').textContent = '黑匣子广播 · 位置已暴露，追兵接近';
         else if (event.type === 'salvage-collected') $('run-log').textContent = '样本 +' + event.value + ' · 登舰后才结算奖金';
         else if (event.type === 'salvage-vault-unlock') $('run-log').textContent = '静默窗口已开启 · 靠近保险箱交互领取';
         else if (event.type === 'salvage-source-start') $('run-log').textContent = '钻探已启动 · 留在工作圈，离圈暂停';
@@ -325,7 +328,7 @@
     renderer.resize(); renderDirty = hudDirty = pointer.dirty = true;
   }
   function welcome() {
-    showScreen('welcome', '<div class="screen-kicker">STARSPROUT / 危险回收 · 7.1.0</div><h1 id="screen-title">多拿一份，<em>还是现在带回家？</em></h1><p class="screen-description">7.0「危险回收」：一张连续战场，五处有限回收源，两个撤离点。安静开箱、坚守钻探或截停运输，带着样本决定何时离开。</p><div class="sector-grid">' + Expedition.MAPS.map((map, index) => '<button class="sector-card ' + (map.id === game.map.id ? 'selected' : '') + '" data-map="' + map.id + '" aria-pressed="' + (map.id === game.map.id) + '" style="--sector-color:' + map.color + '"><small>SECTOR 0' + (index + 1) + (map.id === 'ruins' ? ' / NEW · 归星行动' : ' / 单区行动') + '</small><span class="sector-symbol">' + ['✳', '▧', '❄', 'ϟ', '◇'][index] + '</span><b>' + map.name + '</b><span>' + map.subtitle + '</span><p>' + map.description + '</p></button>').join('') + '</div><div class="sector-brief"><b>' + game.map.name + ' · 行动简报</b><p>' + game.map.briefing + '</p></div><div class="sector-intel"><span><b>战区威胁</b>' + game.map.threat.name + '</span><span><b>终局首领</b>' + game.map.boss.name + '</span></div><button class="launch-button" id="start-run">进入' + game.map.name + ' <b>↗</b></button><p class="welcome-note">' + game.map.threat.description + '</p><div class="welcome-controls"><span><kbd>W A S D</kbd>移动探索</span><span><kbd>1 — 6</kbd>切换武器</span><span><kbd>SHIFT / 空格</kbd>相位冲刺</span><span><kbd>F</kbd>星核暴走</span></div>');
+    showScreen('welcome', '<div class="screen-kicker">STARSPROUT / 危险回收 · 7.2.0</div><h1 id="screen-title">多拿一份，<em>还是现在带回家？</em></h1><p class="screen-description">7.2「撤离抉择」：西侧快撤、东侧掩体，提前选好回家的路。黑匣子带回 +480，携带更强，却会广播引来追兵；舍不得丢，还是现在撤？</p><div class="sector-grid">' + Expedition.MAPS.map((map, index) => '<button class="sector-card ' + (map.id === game.map.id ? 'selected' : '') + '" data-map="' + map.id + '" aria-pressed="' + (map.id === game.map.id) + '" style="--sector-color:' + map.color + '"><small>SECTOR 0' + (index + 1) + (map.id === 'ruins' ? ' / NEW · 归星行动' : ' / 单区行动') + '</small><span class="sector-symbol">' + ['✳', '▧', '❄', 'ϟ', '◇'][index] + '</span><b>' + map.name + '</b><span>' + map.subtitle + '</span><p>' + map.description + '</p></button>').join('') + '</div><div class="sector-brief"><b>' + game.map.name + ' · 行动简报</b><p>' + game.map.briefing + '</p></div><div class="sector-intel"><span><b>战区威胁</b>' + game.map.threat.name + '</span><span><b>终局首领</b>' + game.map.boss.name + '</span></div><button class="launch-button" id="start-run">进入' + game.map.name + ' <b>↗</b></button><p class="welcome-note">' + game.map.threat.description + '</p><div class="welcome-controls"><span><kbd>W A S D</kbd>移动探索</span><span><kbd>1 — 6</kbd>切换武器</span><span><kbd>SHIFT / 空格</kbd>相位冲刺</span><span><kbd>F</kbd>星核暴走</span></div>');
     $('start-run').addEventListener('click', startRun);
     $('screen-content').querySelectorAll('[data-map]').forEach(button => button.addEventListener('click', () => {
       resetRun(button.dataset.map); welcome(); tone('click');
@@ -353,7 +356,7 @@
     const modes = document.createElement('div'); modes.className = 'camp-mode-grid';
     $('screen-content').querySelector('.screen-description').after(modes); modes.append(voyageEntry, campaignEntry, trialEntry);
     const salvageEntry = document.createElement('button'); salvageEntry.id = 'salvage-entry'; salvageEntry.className = 'campaign-entry salvage-entry';
-    salvageEntry.innerHTML = '<span class="campaign-entry-mark" aria-hidden="true">◇</span><span><small>7.0 / 自主回收</small><b>危险回收</b><em>连续战场 · 五处来源 · 自主撤离</em></span><strong>准备回收 ↗</strong>';
+    salvageEntry.innerHTML = '<span class="campaign-entry-mark" aria-hidden="true">◇</span><span><small>7.2 / 撤离抉择</small><b>危险回收</b><em>双路撤离 · 烫手黑匣子 · 自主取舍</em></span><strong>准备回收 ↗</strong>';
     modes.prepend(salvageEntry); salvageEntry.addEventListener('click', () => showSalvageIntro());
     const tools = document.createElement('div'); tools.className = 'camp-tools';
     const fieldEntry = document.createElement('button'); fieldEntry.id = 'open-battlefield'; fieldEntry.className = 'secondary-button';
@@ -368,7 +371,7 @@
     $('close-battlefield').addEventListener('click', returnTo);
   }
   function showSalvageIntro(difficulty = 'normal', seedValue = '') {
-    showScreen('salvage-intro', '<div class="screen-kicker">SALVAGE / 危险回收</div><h2 id="screen-title">多拿一份，还是现在回家？</h2><p class="salvage-intro-note">五处有限回收源，两处撤离点。样本带上舰才计奖金；空手也能安全撤回。</p><div class="salvage-config"><div class="salvage-difficulties"><button class="campaign-choice" data-salvage-difficulty="normal" aria-pressed="false"><b>启航</b><small>完整回收与撤离体验</small></button><button class="campaign-choice" data-salvage-difficulty="overload" aria-pressed="false"><b>超载</b><small>敌人耐久 +20% · 伤害 +12%</small></button></div><label class="voyage-seed-label" for="salvage-seed">战场种子 <small>选填；同种子可复测</small><input id="salvage-seed" type="text" inputmode="numeric" maxlength="10" placeholder="留空生成新战场" autocomplete="off"></label></div><p id="salvage-selection" class="salvage-selection" aria-live="polite"></p><div class="menu-buttons salvage-launch"><button class="launch-button" id="start-salvage">进入回收区 <b>↗</b></button><button class="secondary-button" id="close-salvage-intro">返回营地</button></div><details class="salvage-rules"><summary>回收与撤离规则</summary><p><b>保险箱 ×2</b> Q / 脉冲开启 4 秒静默窗口，再靠近交互；或射击破锁，提高警戒。</p><p><b>钻探井 ×2</b> 交互启动，在圈内累计 8 秒。离圈保留进度，完成直接取得样本。</p><p><b>运输无人机 ×1</b> 射击截停，再靠近交互取货。货物不会被经验磁吸。</p><p>破锁、钻探与截停都会提高警戒，静默开箱动静较小。警戒升级会招来增援，高警戒还会出现扫描爆圈；呼叫接应也会招来追兵。</p><p>撤离点交互呼叫接应，10 秒到达后在圈内累计 3 秒登舰。离圈保留进度；射击、冲刺、装填始终可用。无需清空敌人。</p><p>三种来源合计 17 样本，每份成功带回计 80 分。死亡丢失未结算样本；刷新结束本局，账号仅同步已有成就与纪录。</p><button class="secondary-button" id="salvage-battlefield">查看破阵反制资料</button></details>');
+    showScreen('salvage-intro', '<div class="screen-kicker">SALVAGE / 危险回收</div><h2 id="screen-title">多拿一份，还是现在回家？</h2><p class="salvage-intro-note">五处样本源，一件烫手黑匣子。西侧 10 秒快撤但空旷，东侧 16 秒等待但有岩石掩体；都需圈内累计 3 秒登舰。</p><div class="salvage-config"><div class="salvage-difficulties"><button class="campaign-choice" data-salvage-difficulty="normal" aria-pressed="false"><b>启航</b><small>完整回收与撤离体验</small></button><button class="campaign-choice" data-salvage-difficulty="overload" aria-pressed="false"><b>超载</b><small>敌人耐久 +20% · 伤害 +12%</small></button></div><label class="voyage-seed-label" for="salvage-seed">战场种子 <small>选填；同种子可复测</small><input id="salvage-seed" type="text" inputmode="numeric" maxlength="10" placeholder="留空生成新战场" autocomplete="off"></label></div><p id="salvage-selection" class="salvage-selection" aria-live="polite"></p><div class="menu-buttons salvage-launch"><button class="launch-button" id="start-salvage">进入回收区 <b>↗</b></button><button class="secondary-button" id="close-salvage-intro">返回营地</button></div><details class="salvage-rules"><summary>回收与撤离规则</summary><p><b>保险箱 ×2</b> Q / 脉冲开启 4 秒静默窗口，再靠近交互；或射击破锁，提高警戒。</p><p><b>钻探井 ×2</b> 交互启动，在圈内累计 8 秒。离圈保留进度，完成直接取得样本。</p><p><b>运输无人机 ×1</b> 射击截停，再靠近交互取货。货物不会被经验磁吸。</p><p>破锁、钻探与截停都会提高警戒，静默开箱动静较小。警戒升级会招来增援，高警戒还会出现扫描爆圈；呼叫接应也会招来追兵。</p><p>撤离点在地图提前标清：西侧 10 秒、空旷；东侧 16 秒、岩石掩体。呼叫后固定接应点，舰到后在圈内累计 3 秒登舰，离圈保留进度；射击、冲刺、装填始终可用。无需清空敌人。</p><p><b>黑匣子 ×1</b> 地图标记其位置，靠近交互拾取。带回额外 +480 分；携带时武器伤害 +15%，不减速，每 12 秒广播并提高警戒、招来追兵。G / 弃货随时放下，停止新广播；重拾保留广播倒计时。EMP 和技能不享受武器加成。</p><p>三种来源合计 17 样本，每份成功带回计 80 分。死亡丢失未结算样本；刷新结束本局，账号仅同步已有成就与纪录。</p><button class="secondary-button" id="salvage-battlefield">查看破阵反制资料</button></details>');
     $('salvage-seed').value = seedValue;
     const update = () => {
       $('screen-content').querySelectorAll('[data-salvage-difficulty]').forEach(button => { const selected = button.dataset.salvageDifficulty === difficulty; button.classList.toggle('selected', selected); button.setAttribute('aria-pressed', String(selected)); });
@@ -394,7 +397,7 @@
   }
   function showSalvageResult() {
     const salvage = game.salvage, extracted = salvage.status === 'extracted', failed = salvage.status === 'failed'; rememberBest();
-    showScreen('result', '<div class="result-icon">◇</div><div class="screen-kicker">SALVAGE / ' + (extracted ? 'EXTRACTED' : failed ? 'SIGNAL LOST' : 'WITHDRAWN') + '</div><h2 id="screen-title">' + (extracted ? '带回的不止样本，还有答案。' : failed ? '样本遗落，经验留下。' : '安全撤回，下一次再拿。') + '</h2><p>' + (extracted ? '样本已经登舰，回收奖金已结算。何时离开，也是你的战术。' : failed ? '未登舰的样本已失去，没有发放回收奖金。' : '本次没有带回样本，回收奖金为 0；这次安全撤回不算成功回收。') + '</p><div class="result-grid"><div><strong>' + salvage.settled + '</strong><small>已带回样本</small></div><div><strong>' + salvage.bonus + '</strong><small>回收奖金</small></div><div><strong>' + game.score + '</strong><small>本局总得分</small></div></div><p class="salvage-result-state" data-salvage-result="' + salvage.status + '">' + salvageStateText() + ' · 遗失样本 ' + salvage.lostSamples + ' · 用时 ' + formatTime(game.elapsed) + '</p><p class="result-tip">回收来源 ' + salvage.sources.filter(source => source.status === 'collected').length + '/5 · 警戒 ' + salvage.alertLevel + ' · 击败 ' + game.kills + ' · 精准装填 ' + runStats.perfectReloads + '</p><p class="expedition-tip">破坏掩体 ' + salvage.fieldStats.fractures + ' · 电容爆破 ' + salvage.fieldStats.detonations + ' · EMP 接管 ' + salvage.fieldStats.captures + '</p><p class="campaign-note">种子 ' + salvage.seed + ' · ' + (salvage.difficulty === 'overload' ? '超载' : '启航') + '<br>' + profileSaveNote() + '</p><div class="menu-buttons"><button class="launch-button" id="salvage-retry">同种子再战 <b>↗</b></button><button class="secondary-button" id="salvage-new">新的回收区</button><button class="secondary-button" id="salvage-camp">返回营地</button></div>');
+    showScreen('result', '<div class="result-icon">◇</div><div class="screen-kicker">SALVAGE / ' + (extracted ? 'EXTRACTED' : failed ? 'SIGNAL LOST' : 'WITHDRAWN') + '</div><h2 id="screen-title">' + (extracted ? '带回的不止样本，还有答案。' : failed ? '样本遗落，经验留下。' : '安全撤回，下一次再拿。') + '</h2><p>' + (extracted ? '货物已经登舰，回收奖金已结算。何时离开，也是你的战术。' : failed ? '未登舰的样本已失去，没有发放回收奖金。' : '本次没有带回样本，回收奖金为 0；这次安全撤回不算成功回收。') + '</p><div class="result-grid"><div><strong>' + salvage.settled + '</strong><small>已带回样本</small></div><div><strong>' + salvage.bonus + '</strong><small>回收奖金</small></div><div><strong>' + game.score + '</strong><small>本局总得分</small></div></div><p class="salvage-result-state" data-salvage-result="' + salvage.status + '">' + salvageStateText() + ' · 黑匣子 ' + (salvage.hotCargo?.status === 'banked' ? '+' + salvage.cargoBonus + ' 已带回' : salvage.hotCargo?.status === 'lost' ? '遗失' : '未带回') + ' · 遗失样本 ' + salvage.lostSamples + ' · 用时 ' + formatTime(game.elapsed) + '</p><p class="result-tip">回收来源 ' + salvage.sources.filter(source => source.status === 'collected').length + '/5 · 警戒 ' + salvage.alertLevel + ' · 击败 ' + game.kills + ' · 精准装填 ' + runStats.perfectReloads + '</p><p class="expedition-tip">破坏掩体 ' + salvage.fieldStats.fractures + ' · 电容爆破 ' + salvage.fieldStats.detonations + ' · EMP 接管 ' + salvage.fieldStats.captures + '</p><p class="campaign-note">种子 ' + salvage.seed + ' · ' + (salvage.difficulty === 'overload' ? '超载' : '启航') + '<br>' + profileSaveNote() + '</p><div class="menu-buttons"><button class="launch-button" id="salvage-retry">同种子再战 <b>↗</b></button><button class="secondary-button" id="salvage-new">新的回收区</button><button class="secondary-button" id="salvage-camp">返回营地</button></div>');
     $('salvage-retry').addEventListener('click', () => startSalvage(salvage.difficulty, salvage.seed));
     $('salvage-new').addEventListener('click', () => startSalvage(salvage.difficulty));
     $('salvage-camp').addEventListener('click', () => { resetRun('frontier'); welcome(); });
@@ -873,9 +876,11 @@
     }).join('');
     const exits = salvage.exits.map(exit => {
       const called = salvage.evac?.exitId === exit.id, unavailable = !!salvage.evac && !called;
-      return '<button class="map-destination salvage-exit' + (exit.id === target?.id ? ' selected' : '') + '" data-salvage-target="' + exit.id + '"' + (unavailable ? ' disabled' : '') + '><small>撤离点 · ' + Math.round(Math.hypot(exit.x - game.player.x, exit.y - game.player.y) / 10) + ' m</small><b>' + (exit.name || '撤离点') + '</b><small>' + (called ? salvageStateText() : unavailable ? '接应已固定在另一处撤离点' : '靠近交互呼叫；空手也可撤回') + '</small><span>' + (exit.id === target?.id ? '◎ 正在追踪' : unavailable ? '无法在此登舰' : '选择追踪 →') + '</span></button>';
+      return '<button class="map-destination salvage-exit' + (exit.id === target?.id ? ' selected' : '') + '" data-salvage-target="' + exit.id + '"' + (unavailable ? ' disabled' : '') + '><small>撤离点 · ' + Math.round(Math.hypot(exit.x - game.player.x, exit.y - game.player.y) / 10) + ' m</small><b>' + (exit.name || '撤离点') + '</b><small>' + (called ? salvageStateText() : unavailable ? '接应已固定在另一处撤离点' : exit.arrivalDuration + ' 秒接应 · ' + exit.coverLabel) + '</small><span>' + (exit.id === target?.id ? '◎ 正在追踪' : unavailable ? '无法在此登舰' : '选择追踪 →') + '</span></button>';
     }).join('');
-    showScreen('map', '<div class="screen-kicker">SALVAGE / 战术地图</div><h2 id="screen-title">危险回收 · 自己决定何时离开</h2><p class="salvage-selection">样本 ' + salvage.carried + ' · 警戒 ' + salvage.alertLevel + '（' + salvage.alarm + '/100） · ' + salvageStateText() + '</p><div class="tactical-layout"><div class="tactical-surface"><canvas id="tactical-map" width="640" height="480" aria-label="回收战场：五处来源、两个撤离点、当前位置和地形"></canvas><div class="tactical-legend"><span>△ 你</span><span>◇ 保险箱</span><span>◎ 钻探井</span><span>▱ 运输货物</span><span>⇧ 撤离点</span></div></div><div class="destination-list salvage-destinations">' + rows + exits + '</div></div><div class="menu-buttons"><button class="launch-button" id="close-map">返回回收区 <b>↗</b></button></div><p class="map-note">战斗与所有回收计时已暂停 · 选择只改变追踪，靠近 E / 交互执行 · M / Esc 关闭</p>');
+    const cargo = salvage.hotCargo, canTrackCargo = cargo && ['ground', 'dropped'].includes(cargo.status);
+    const cargoRow = cargo ? '<button class="map-destination salvage-cargo" data-salvage-target="' + cargo.id + '"' + (canTrackCargo ? '' : ' disabled') + '><small>高价值货物 · 带回 +' + cargo.bonus + '</small><b>黑匣子</b><small>' + (cargo.status === 'carried' ? '已携带 · ' + Math.ceil(cargo.pulseRemaining) + ' 秒后广播' : canTrackCargo ? '武器 +15% · 每 12 秒暴露 · 可以丢弃' : cargo.status === 'banked' ? '已带回' : '已遗失') + '</small><span>' + (canTrackCargo ? '选择追踪 →' : '携带时 G / 弃货放下') + '</span></button>' : '';
+    showScreen('map', '<div class="screen-kicker">SALVAGE / 战术地图</div><h2 id="screen-title">危险回收 · 自己决定何时离开</h2><p class="salvage-selection">样本 ' + salvage.carried + ' · 警戒 ' + salvage.alertLevel + '（' + salvage.alarm + '/100） · ' + salvageStateText() + '</p><div class="tactical-layout"><div class="tactical-surface"><canvas id="tactical-map" width="640" height="480" aria-label="回收战场：五处来源、黑匣子、两个撤离点、当前位置和掩体"></canvas><div class="tactical-legend"><span>△ 你</span><span>◇ 保险箱</span><span>◎ 钻探井</span><span>▱ 运输货物</span><span>⇧ 撤离点</span><span>▣ 黑匣子</span></div></div><div class="destination-list salvage-destinations">' + rows + exits + cargoRow + '</div></div><div class="menu-buttons"><button class="launch-button" id="close-map">返回回收区 <b>↗</b></button></div><p class="map-note">战斗与所有回收计时已暂停 · 选择只改变追踪，靠近 E / 交互执行 · M / Esc 关闭</p>');
     FrontierTouch.bindTouchAction($('close-map'), closeMap);
     $('screen-content').querySelectorAll('[data-salvage-target]').forEach(button => bindMenuChoice(button, () => {
       if (!game.selectSalvageTarget(Number(button.dataset.salvageTarget))) return;
@@ -1268,7 +1273,19 @@
     $('touch-interact').disabled = !state.action;
     setText('touch-interact', state.action || '交互');
     $('touch-interact').setAttribute('aria-label', state.action || state.hint || '附近没有可交互目标');
+    const cargo = game.salvage?.hotCargo, carrying = cargo?.status === 'carried';
+    const cargoControl = $('cargo-control'), stage = $('game-stage');
+    if (window.matchMedia('(pointer: coarse) and (orientation: landscape)').matches) {
+      if (cargoControl.parentElement !== stage) stage.append(cargoControl);
+    } else if (cargoControl.parentElement === stage) document.querySelector('.objective-hud').append(cargoControl);
+    $('cargo-control').classList.toggle('hidden', !carrying);
+    $('cargo-drop').disabled = !carrying || !canPlay();
+    if (carrying) {
+      setText('cargo-status', '▣ +' + cargo.bonus + ' · 广播 ' + Math.ceil(cargo.pulseRemaining) + 's');
+      $('cargo-drop').setAttribute('aria-label', '放下黑匣子：停止新广播并失去武器加成，已来的追兵不会消失');
+    }
   }
+  function dropCargo() { act(() => game.dropSalvageCargo()); }
   function keepWeaponVisible() {
     const bar = document.querySelector('.weapons-hud'), button = bar.querySelector('[data-weapon="' + game.player.weapon + '"]');
     if (!button || bar.scrollWidth <= bar.clientWidth) return;
@@ -1313,6 +1330,7 @@
   FrontierTouch.bindTouchAction($('touch-overdrive'), () => act(() => game.activateOverdrive()));
   FrontierTouch.bindTouchAction($('reload-button'), () => act(() => game.reload()));
   FrontierTouch.bindTouchAction($('touch-interact'), interact);
+  FrontierTouch.bindTouchAction($('cargo-drop'), dropCargo);
   document.querySelectorAll('[data-weapon]').forEach(button => FrontierTouch.bindTouchAction(button, () => switchWeapon(Number(button.dataset.weapon)), true));
   FrontierTouch.bindTouchAction($('pause-toggle'), () => screen === 'pause' ? resume() : pauseGame());
   FrontierTouch.bindTouchAction($('fullscreen-pause'), () => screen === 'pause' ? resume() : pauseGame());
@@ -1384,6 +1402,7 @@
         else if (code === 'KeyQ') { event.preventDefault(); act(() => game.useSkill()); }
         else if (code === 'KeyF') { event.preventDefault(); act(() => game.activateOverdrive()); }
         else if (code === 'KeyE') { event.preventDefault(); interact(); }
+        else if (code === 'KeyG') { event.preventDefault(); dropCargo(); }
         else if (/^Digit[123456]$/.test(code)) { event.preventDefault(); switchWeapon(Number(code.slice(-1)) - 1); }
       }
     }
