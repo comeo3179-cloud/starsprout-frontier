@@ -48,7 +48,7 @@
 
 ## 开始游玩
 
-国内在线试玩，无需安装：<https://starsprout-playtest-d7bqa2fc8da1-1494842646.tcloudbaseapp.com/>。账号功能连接该站点的腾讯云环境；自行部署请配置自己的认证环境及授权域名。
+腾讯云在线试玩，无需安装：<https://starsprout-playtest-d7bqa2fc8da1-1494842646.tcloudbaseapp.com/>。账号功能连接该站点的腾讯云环境；自行部署请配置自己的认证环境及授权域名。
 
 双击 `index.html` 即可离线游客游玩；图形和音效在本地生成。账号与云存档需要网络、已配置的腾讯云环境和授权的网页域名；本地开发不具备云端域名授权时仍可试玩。
 
@@ -127,7 +127,7 @@ npm test
 
 **7.0.0 已通过 600 项源码自动测试、458 项实际压缩引擎测试；6.0.0 分别通过 529 与 400 项。** 新增环境反制、五处回收来源、六种武器的实际碰撞、警戒配额、登舰计时、空返与死亡结算检查。7.0 的六种固定策略在源码和压缩引擎中得到完全一致的结果；另用浏览器原生动画帧完成回收，同引擎、渲染和音频内容的早期候选还连续运行同页面、同音频上下文的 36 局。首次领悟、升级与登舰同时发生时，仍保持计时冻结和一次结算。手机边界镜头、第三指打开暂停/地图/帮助，以及确认首次领悟和恢复游戏均已实测。
 
-浏览器场景注明受控夹具或普通输入，手机检查使用视口与触点模拟；这些证据不代表实体手机、全部 Safari 兼容性或真人难度结论。回收区允许短局撤离，没有强制拉长时长。发布说明、源码包与网页包见 [6.0.0 Release](https://github.com/comeo3179-cloud/starsprout-frontier/releases/tag/v6.0.0) 与 [7.0.0 Release](https://github.com/comeo3179-cloud/starsprout-frontier/releases/tag/v7.0.0)；完整开发 QA 报告留在本机。
+浏览器场景注明受控夹具或普通输入，手机检查使用视口与触点模拟；这些证据不代表实体手机、全部 Safari 兼容性或真人难度结论。回收区允许短局撤离，没有强制拉长时长。发布说明、源码包与网页包见 [6.0.0 Release](https://github.com/comeo3179-cloud/starsprout-frontier/releases/tag/v6.0.0)、[7.0.0 Release](https://github.com/comeo3179-cloud/starsprout-frontier/releases/tag/v7.0.0) 与 [7.1.0 Release](https://github.com/comeo3179-cloud/starsprout-frontier/releases/tag/v7.1.0)；完整开发 QA 报告留在本机。
 
 可复跑正常输入的固定种子整局仿真：
 
