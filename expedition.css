@@ -556,6 +556,13 @@ body.immersive-page{overflow:hidden}
 .salvage-rules p{margin:8px 0}
 .salvage-rules b{color:#d0e2c8;font-weight:500;margin-right:8px}
 .salvage-rules .secondary-button{min-height:44px}
+.peek-details{margin:10px 0;text-align:left;border-top:1px solid #527b6b66;color:#abc7bf;font-size:11px;line-height:1.8}
+.peek-details>summary{min-height:44px;padding:10px 3px;cursor:pointer;color:#c5ddc0;touch-action:manipulation}
+.peek-details>summary:focus-visible{outline:2px solid var(--lime);outline-offset:2px}
+.peek-details p{margin:7px 0;line-height:1.8}
+.peek-details .campaign-note{text-align:left;margin:6px 0}
+.peek-details>.trial-rules{margin:4px 0 12px}
+.welcome .camp-mode-grid small{display:none}
 .salvage-result-state{font-size:12px!important;color:#c7e4be!important}
 .map-screen .salvage-destinations .map-destination{min-height:64px;flex-shrink:0}
 @media(max-width:760px){.map-screen .salvage-destinations{grid-template-columns:repeat(2,minmax(0,1fr))}.map-screen .salvage-destinations .map-destination{min-height:100px}.map-screen .salvage-destinations .map-destination b{font-size:12px}.map-screen .salvage-destinations .map-destination small,.map-screen .salvage-destinations .map-destination span{font-size:9px}}
