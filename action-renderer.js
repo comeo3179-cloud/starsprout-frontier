@@ -2716,9 +2716,45 @@
     }
 
     updatePointerHud() {
+      const parent = this.canvas?.parentElement;
+      const hudSelector = '.player-hud,.map-hud,.objective-hud,.weapons-hud,.ammo-hud,.skill-hud,.active-reload,.touch-stick,#touch-interact,.fullscreen-controls,.combat-notices,.event-banner,.notification.visible,.interaction-hint,.boss-hud,.field-coach';
+      if (parent && !this.pointerHudObserver && window.MutationObserver) {
+        this.pointerHudPending = new Set();
+        this.pointerHudChanged = records => {
+          if (!records.length) return;
+          const attributes = new Map();
+          for (const record of records) {
+            const element = record.target.nodeType === 1 ? record.target : record.target.parentElement;
+            if (record.type === 'attributes') {
+              const seen = attributes.get(element) || new Set();
+              if (seen.has(record.attributeName)) continue;
+              seen.add(record.attributeName); attributes.set(element, seen);
+              if (record.oldValue !== undefined && record.oldValue === element?.getAttribute(record.attributeName)) continue;
+            }
+            if (element === parent) { this.pointerHudTime = -1; continue; }
+            const hud = element?.closest(hudSelector);
+            if (!hud || record.attributeName === 'style' && !element.matches(hudSelector)) continue;
+            if (record.attributeName === 'class') this.pointerHudTime = -1;
+            else this.pointerHudPending.add(hud);
+          }
+        };
+        this.pointerHudObserver = new window.MutationObserver(this.pointerHudChanged);
+        this.pointerHudObserver.observe(parent, { subtree: true, childList: true, characterData: true, attributes: true, attributeOldValue: true, attributeFilter: ['class', 'style'] });
+      }
+      // Drain same-turn HUD changes before drawing; decorative child styles keep the cache.
+      if (this.pointerHudObserver) this.pointerHudChanged(this.pointerHudObserver.takeRecords());
+      for (const element of this.pointerHudPending || []) {
+        if (this.pointerHudTime < 0) break;
+        const rect = element.getBoundingClientRect(), previous = this.pointerHudRects?.get(element);
+        if (!previous || ['left', 'right', 'top', 'bottom'].some(side => rect[side] !== previous[side])) this.pointerHudTime = -1;
+      }
+      this.pointerHudPending?.clear();
       if (!this.pointerHud || this.pointerHudTime < 0 || this.time - this.pointerHudTime > 0.5) {
-        const origin = this.canvas.getBoundingClientRect(), parent = this.canvas.parentElement;
-        const rects = selector => Array.from(parent?.querySelectorAll(selector) || []).map(element => element.getBoundingClientRect()).filter(r => r.width > 0 && r.height > 0);
+        const origin = this.canvas.getBoundingClientRect();
+        this.pointerHudRects = new Map();
+        const rects = selector => Array.from(parent?.querySelectorAll(selector) || []).map(element => {
+          const rect = element.getBoundingClientRect(); this.pointerHudRects.set(element, rect); return rect;
+        }).filter(r => r.width > 0 && r.height > 0);
         const top = rects('.map-hud,.objective-hud'), bottom = rects('.weapons-hud,.ammo-hud,.skill-hud,.active-reload,.touch-stick,#touch-interact');
         this.pointerHud = {
           right: top.length ? Math.min(...top.map(r => r.left - origin.left)) : this.width - (this.width > 760 ? 235 : 170),
@@ -2727,7 +2763,7 @@
         };
         const style = parent && window.getComputedStyle?.(parent);
         this.pointerHud.safe = Object.fromEntries(['left', 'right', 'top', 'bottom'].map(side => [side, parseFloat(style?.getPropertyValue('--safe-' + side)) || 0]));
-        this.pointerHud.blocks = rects('.player-hud,.map-hud,.objective-hud,.weapons-hud,.ammo-hud,.skill-hud,.active-reload,.touch-stick,#touch-interact,.fullscreen-controls,.combat-notices,.boss-hud,.field-coach')
+        this.pointerHud.blocks = rects(hudSelector)
           .map(r => ({ left: r.left - origin.left, right: r.right - origin.left, top: r.top - origin.top, bottom: r.bottom - origin.top }));
         this.pointerHudTime = this.time;
       }

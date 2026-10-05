@@ -2396,10 +2396,8 @@
     }
 
     interactionState() {
-      if (this.salvage) {
-        const state = this._salvageInteraction();
-        if (state) return state;
-      }
+      const salvageState = this.salvage ? this._salvageInteraction() : null;
+      if (salvageState?.action) return salvageState;
       if (this.voyage) {
         const exit = this.voyage.room.exit, near = distance(this.player, exit) <= 94;
         return { target: exit, action: this.phase === 'playing' && exit.ready && near ? '撤离' : '',
@@ -2432,6 +2430,7 @@
         ...this.contracts.filter(contract => contract.kind === 'salvage' && contract.status === 'active').flatMap(contract => contract.nodes.filter(node => !node.collected))];
       const nearby = entities.filter(entity => distance(this.player, entity) <= 94).sort((a, b) => distance(this.player, a) - distance(this.player, b));
       if (!nearby.length) {
+        if (salvageState) return salvageState;
         const charging = this.relays.find(relay => relay.status === 'charging');
         if (this.delivery && charging) return { target: null, action: '', hint: '回收放下的星火，再送往' + charging.name };
         const hint = charging && distance(this.player, charging) > charging.radius ? (this.map.mode === 'demolition' ? '射击反应堆核心，无需留在圈内' : this.map.mode === 'escort' ? '返回运输机光圈，继续护送' : this.map.mode === 'conduction' ? (this.hazards.some(hazard => hazard.conductionRelayId === charging.id) ? '雷圈已锁定，远离爆圈等待落雷' : '返回塔圈引雷，锁定后再撤出爆圈') : '返回信标光圈，继续上传') : '';
@@ -2472,7 +2471,7 @@
       });
       const state = states.find(candidate => candidate.action) || states[0];
       if (this.phase !== 'playing') state.action = '';
-      return state;
+      return state.action ? state : salvageState || state;
     }
 
     interactionHint() {
@@ -2793,7 +2792,8 @@
             enemy.windup = 0.95;
             enemy.attackKind = 'slam';
             enemy.attackTimer = 4.1;
-            this._addHazard('blast', enemy.x, enemy.y, 125, 0.95, 23 * (this.voyage ? VOYAGE_DIFFICULTIES.find(item => item.id === this.voyage.difficulty).damage : 1), { sourceId: enemy.id, enemyType: 'tank', color: '#ffbd7b', owner: 'enemy' });
+            const difficulty = this.salvage ? SALVAGE_DIFFICULTIES.find(item => item.id === this.salvage.difficulty) : this.voyage ? VOYAGE_DIFFICULTIES.find(item => item.id === this.voyage.difficulty) : null;
+            this._addHazard('blast', enemy.x, enemy.y, 125, 0.95, 23 * (difficulty ? difficulty.damage : 1), { sourceId: enemy.id, enemyType: 'tank', color: '#ffbd7b', owner: 'enemy' });
           } else this._steerMove(enemy, dx / length, dy / length, enemy.speed, dt);
         }
         else if (enemy.type === 'charger') {

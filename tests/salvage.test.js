@@ -98,6 +98,23 @@ test('overload scales ordinary enemies while preserving source health and finite
   assert.equal(a.salvage.pending.length, b.salvage.pending.length);
 });
 
+for (const [difficulty, damage] of [['normal', 23], ['overload', 25.76]]) {
+  test(`salvage tank slam ${difficulty} resolves its advertised damage after the original warning`, () => {
+    const game = clearGeometry(salvage({ difficulty })); position(game, { x: 1000, y: 900 });
+    const tank = game.spawnEnemy('tank', { x: 1120, y: 900 }); tank.attackTimer = 0;
+    const hp = game.player.hp;
+    game.update(1 / 60);
+    const warning = game.hazards.find(hazard => hazard.sourceId === tank.id && hazard.enemyType === 'tank');
+    assert.ok(warning); assert.equal(warning.owner, 'enemy'); near(warning.duration, .95); near(warning.radius, 125);
+    advance(game, .9); assert.equal(game.player.hp, hp, 'The warning must remain dodgeable before detonation');
+    advance(game, .05);
+    near(warning.damage, damage); near(hp - game.player.hp, damage);
+    assert.equal(game.lastDamage.kind, 'hazard'); assert.match(game.lastDamage.name, /铁棘重甲 · 震地重击/);
+    near(game.lastDamage.at, .95);
+    assert.equal(game.drainEvents().filter(event => event.type === 'damage').length, 1);
+  });
+}
+
 test('locked vault cannot be collected until an actual unlock or damage opens it', () => {
   const game = clearGeometry(salvage()), vault = source(game, 'vault');
   position(game, vault, 50);

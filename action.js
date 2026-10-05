@@ -325,7 +325,7 @@
     renderer.resize(); renderDirty = hudDirty = pointer.dirty = true;
   }
   function welcome() {
-    showScreen('welcome', '<div class="screen-kicker">STARSPROUT / 危险回收 · 7.0.0</div><h1 id="screen-title">多拿一份，<em>还是现在带回家？</em></h1><p class="screen-description">7.0「危险回收」：一张连续战场，五处有限回收源，两个撤离点。安静开箱、坚守钻探或截停运输，带着样本决定何时离开。</p><div class="sector-grid">' + Expedition.MAPS.map((map, index) => '<button class="sector-card ' + (map.id === game.map.id ? 'selected' : '') + '" data-map="' + map.id + '" aria-pressed="' + (map.id === game.map.id) + '" style="--sector-color:' + map.color + '"><small>SECTOR 0' + (index + 1) + (map.id === 'ruins' ? ' / NEW · 归星行动' : ' / 单区行动') + '</small><span class="sector-symbol">' + ['✳', '▧', '❄', 'ϟ', '◇'][index] + '</span><b>' + map.name + '</b><span>' + map.subtitle + '</span><p>' + map.description + '</p></button>').join('') + '</div><div class="sector-brief"><b>' + game.map.name + ' · 行动简报</b><p>' + game.map.briefing + '</p></div><div class="sector-intel"><span><b>战区威胁</b>' + game.map.threat.name + '</span><span><b>终局首领</b>' + game.map.boss.name + '</span></div><button class="launch-button" id="start-run">进入' + game.map.name + ' <b>↗</b></button><p class="welcome-note">' + game.map.threat.description + '</p><div class="welcome-controls"><span><kbd>W A S D</kbd>移动探索</span><span><kbd>1 — 6</kbd>切换武器</span><span><kbd>SHIFT / 空格</kbd>相位冲刺</span><span><kbd>F</kbd>星核暴走</span></div>');
+    showScreen('welcome', '<div class="screen-kicker">STARSPROUT / 危险回收 · 7.1.0</div><h1 id="screen-title">多拿一份，<em>还是现在带回家？</em></h1><p class="screen-description">7.0「危险回收」：一张连续战场，五处有限回收源，两个撤离点。安静开箱、坚守钻探或截停运输，带着样本决定何时离开。</p><div class="sector-grid">' + Expedition.MAPS.map((map, index) => '<button class="sector-card ' + (map.id === game.map.id ? 'selected' : '') + '" data-map="' + map.id + '" aria-pressed="' + (map.id === game.map.id) + '" style="--sector-color:' + map.color + '"><small>SECTOR 0' + (index + 1) + (map.id === 'ruins' ? ' / NEW · 归星行动' : ' / 单区行动') + '</small><span class="sector-symbol">' + ['✳', '▧', '❄', 'ϟ', '◇'][index] + '</span><b>' + map.name + '</b><span>' + map.subtitle + '</span><p>' + map.description + '</p></button>').join('') + '</div><div class="sector-brief"><b>' + game.map.name + ' · 行动简报</b><p>' + game.map.briefing + '</p></div><div class="sector-intel"><span><b>战区威胁</b>' + game.map.threat.name + '</span><span><b>终局首领</b>' + game.map.boss.name + '</span></div><button class="launch-button" id="start-run">进入' + game.map.name + ' <b>↗</b></button><p class="welcome-note">' + game.map.threat.description + '</p><div class="welcome-controls"><span><kbd>W A S D</kbd>移动探索</span><span><kbd>1 — 6</kbd>切换武器</span><span><kbd>SHIFT / 空格</kbd>相位冲刺</span><span><kbd>F</kbd>星核暴走</span></div>');
     $('start-run').addEventListener('click', startRun);
     $('screen-content').querySelectorAll('[data-map]').forEach(button => button.addEventListener('click', () => {
       resetRun(button.dataset.map); welcome(); tone('click');
@@ -628,7 +628,7 @@
   function showTactics() {
     const current = Expedition.TACTICS.find(tactic => tactic.id === game.tacticId);
     showScreen('tactic', '<div class="screen-kicker">RIFT RECOVERED / 战术模块</div><h2 id="screen-title">一枚模块，一种战法。</h2><p>战场已暂停。' + (current ? '当前装备「' + current.title + '」。可保留，或换一种打法；替换移除旧效果，战术冷却保留。' : '选择一枚本局生效的模块，沿用现有操作按键。') + '</p><div class="upgrade-grid tactic-grid">' + game.tacticChoices.map((tactic, index) => '<button class="upgrade-card tactic-card" data-tactic="' + tactic.id + '" style="--tactic-color:' + tactic.color + '"><small>单槽战术 · ' + (index + 1) + '</small><span class="upgrade-icon">' + tactic.icon + '</span><b>' + tactic.title + '</b><p>' + tactic.description + '</p><em>' + (current?.id === tactic.id ? '保留并继续' : current ? '替换并继续' : '装备并继续') + ' · 按 ' + (index + 1) + ' ↗</em></button>').join('') + '</div><p class="tactic-footnote">已装备的模块可在暂停菜单查看；本次远征结束后清空。</p>');
-    $('screen-content').querySelectorAll('[data-tactic]').forEach(button => button.addEventListener('click', () => selectTactic(button.dataset.tactic)));
+    $('screen-content').querySelectorAll('[data-tactic]').forEach(button => bindMenuChoice(button, () => selectTactic(button.dataset.tactic)));
   }
   function selectTactic(id) {
     if (activeRevelation || !game.chooseTactic(id)) return;
@@ -777,6 +777,31 @@
     }
     $('screen-content').querySelector('.menu-buttons').before(expeditionTip);
   }
+  function bindMenuChoice(button, select) {
+    let contact = null, lastTouchTime = -Infinity;
+    button.addEventListener('pointerdown', event => {
+      if (button.disabled || event.pointerType !== 'touch' || event.isPrimary) { contact = null; lastTouchTime = -Infinity; return; }
+      // Secondary fingers may not click; wait for a tap so scrolling cannot choose a card.
+      contact = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false }; lastTouchTime = Date.now();
+    });
+    button.addEventListener('pointermove', event => {
+      if (event.pointerId === contact?.id && Math.hypot(event.clientX - contact.x, event.clientY - contact.y) > 10) contact.moved = true;
+    });
+    button.addEventListener('pointercancel', event => {
+      if (event.pointerId === contact?.id) { contact = null; lastTouchTime = Date.now(); }
+    });
+    button.addEventListener('pointerup', event => {
+      if (event.pointerId !== contact?.id) return;
+      const tap = contact; contact = null; lastTouchTime = Date.now();
+      if (button.disabled || tap.moved || Math.hypot(event.clientX - tap.x, event.clientY - tap.y) > 10) return;
+      event.preventDefault(); select();
+    });
+    button.addEventListener('click', event => {
+      if (button.disabled) return;
+      if (event.detail !== 0 && Date.now() - lastTouchTime < 800 && event.pointerType !== 'mouse' && event.pointerType !== 'pen' && event.sourceCapabilities?.firesTouchEvents !== false) { event.preventDefault(); return; }
+      select();
+    });
+  }
   function showMap() {
     if (activeRevelation) return;
     if (!['ready', 'playing'].includes(game.phase) || (screen && !['pause', 'welcome'].includes(screen))) return;
@@ -806,7 +831,7 @@
       return '<button class="map-destination contract-destination ' + (trackedContractId === contract.id ? 'selected' : '') + '" data-contract="' + contract.id + '" ' + (contract.status === 'complete' ? 'disabled' : '') + '><small>' + status + location + '</small><b>' + contract.name + '</b><small>' + contract.description + '</small><span>' + (trackedContractId === contract.id ? '◎ 正在追踪' : contract.status === 'complete' ? '✓ 奖励已领取' : '追踪支线 →') + '</span></button>';
     }).join('');
     if (game.contracts.length) $('screen-content').querySelector('.destination-list').append(contractList);
-    contractList.querySelectorAll('[data-contract]').forEach(button => button.addEventListener('click', () => {
+    contractList.querySelectorAll('[data-contract]').forEach(button => bindMenuChoice(button, () => {
       trackedEncounterId = null; trackedContractId = Number(button.dataset.contract); closeMap(); tone('click'); notify('已追踪支线：' + game.contracts.find(contract => contract.id === trackedContractId).name);
     }));
     if (game.encounters.length) {
@@ -816,7 +841,7 @@
         return '<button class="map-destination encounter-destination ' + (trackedEncounterId === encounter.id ? 'selected' : '') + '" data-encounter="' + encounter.id + '" ' + (done ? 'disabled' : '') + '><small>' + encounterStatus(encounter) + (done ? '' : ' · ' + Math.round(Math.hypot(target.x - game.player.x, target.y - game.player.y) / 10) + ' m') + '</small><b>◈ ' + encounter.name + '</b><small>' + encounter.description + '</small><span>' + (done ? '本次已结束' : trackedEncounterId === encounter.id ? '◎ 正在追踪' : '追踪异象 →') + '</span></button>';
       }).join('');
       $('screen-content').querySelector('.destination-list').prepend(encounterList);
-      encounterList.querySelectorAll('[data-encounter]').forEach(button => button.addEventListener('click', () => {
+      encounterList.querySelectorAll('[data-encounter]').forEach(button => bindMenuChoice(button, () => {
         trackedEncounterId = Number(button.dataset.encounter); trackedContractId = null; closeMap(); tone('click');
         const target = game.encounters.find(encounter => encounter.id === trackedEncounterId);
         const next = target.status === 'ready' ? '返回终端领取模块' : target.status === 'active' ? target.kind === 'race' ? '前往亮起的下一个节点' : target.kind === 'rings' ? '前往明亮的活跃环' : '清除标记守卫' : '到达终端后交互';
@@ -832,7 +857,7 @@
       status.textContent = '终章 · ' + game.enemies.filter(enemy => enemy.type === 'anchor' && enemy.hp > 0).length + '/2 座能量锚存续。双锚全部摧毁后，首领护盾永久解除。';
       $('screen-content').querySelector('.destination-list').prepend(status);
     }
-    $('screen-content').querySelectorAll('[data-target]').forEach(button => button.addEventListener('click', () => {
+    $('screen-content').querySelectorAll('[data-target]').forEach(button => bindMenuChoice(button, () => {
       trackedContractId = null; trackedEncounterId = null;
       trackedRelayId = Number(button.dataset.target); renderer.trackedRelayId = trackedRelayId;
       closeMap(); tone('click'); notify('已追踪：' + game.relays.find(relay => relay.id === trackedRelayId).name);
@@ -852,7 +877,7 @@
     }).join('');
     showScreen('map', '<div class="screen-kicker">SALVAGE / 战术地图</div><h2 id="screen-title">危险回收 · 自己决定何时离开</h2><p class="salvage-selection">样本 ' + salvage.carried + ' · 警戒 ' + salvage.alertLevel + '（' + salvage.alarm + '/100） · ' + salvageStateText() + '</p><div class="tactical-layout"><div class="tactical-surface"><canvas id="tactical-map" width="640" height="480" aria-label="回收战场：五处来源、两个撤离点、当前位置和地形"></canvas><div class="tactical-legend"><span>△ 你</span><span>◇ 保险箱</span><span>◎ 钻探井</span><span>▱ 运输货物</span><span>⇧ 撤离点</span></div></div><div class="destination-list salvage-destinations">' + rows + exits + '</div></div><div class="menu-buttons"><button class="launch-button" id="close-map">返回回收区 <b>↗</b></button></div><p class="map-note">战斗与所有回收计时已暂停 · 选择只改变追踪，靠近 E / 交互执行 · M / Esc 关闭</p>');
     FrontierTouch.bindTouchAction($('close-map'), closeMap);
-    $('screen-content').querySelectorAll('[data-salvage-target]').forEach(button => button.addEventListener('click', () => {
+    $('screen-content').querySelectorAll('[data-salvage-target]').forEach(button => bindMenuChoice(button, () => {
       if (!game.selectSalvageTarget(Number(button.dataset.salvageTarget))) return;
       const next = game.salvageTarget(); closeMap(); tone('click'); $('run-log').textContent = '已追踪：' + next.label + ' · ' + next.hint;
     }));
@@ -923,7 +948,7 @@
     clearInput();
     const hasEvolution = game.upgradeChoices.some(upgrade => upgrade.evolution);
     showScreen('upgrade', '<div class="screen-kicker">GROWTH PROTOCOL / LEVEL ' + game.player.level + '</div><h2 id="screen-title">' + (hasEvolution ? '武器进化，改变战法。' : '让这次远征，有所不同。') + '</h2><p>' + (hasEvolution ? '进化条件已满足。本局只能进化一把；也可先选普通强化。战场已暂停。' : '选择一项本局持续生效的强化。战场已暂停。') + '</p><div class="upgrade-grid' + (hasEvolution ? ' evolution-choices' : '') + '">' + game.upgradeChoices.map((upgrade, i) => '<button class="upgrade-card ' + (upgrade.evolution ? 'evolution-card' : upgrade.weapon !== undefined ? 'weapon-mod' : '') + '" data-upgrade="' + upgrade.id + '"><small>' + (upgrade.evolution ? weapons[upgrade.weapon].shortName + ' · 进化 / 每局限一把' : upgrade.weapon !== undefined ? weapons[upgrade.weapon].shortName + ' · 武器改造' : '生长协议 · ' + (upgrade.stacks + 1) + ' / ' + upgrade.maxStacks) + '</small><span class="upgrade-icon">' + upgrade.icon + '</span><b>' + upgrade.title + '</b><p>' + upgrade.description + '</p><em>' + (upgrade.evolution ? '确认本局进化' : '选择强化') + ' · 按 ' + (i + 1) + ' ↗</em></button>').join('') + '</div>');
-    $('screen-content').querySelectorAll('[data-upgrade]').forEach(button => button.addEventListener('click', () => selectUpgrade(button.dataset.upgrade)));
+    $('screen-content').querySelectorAll('[data-upgrade]').forEach(button => bindMenuChoice(button, () => selectUpgrade(button.dataset.upgrade)));
   }
   function selectUpgrade(id) {
     const choice = game.upgradeChoices.find(upgrade => upgrade.id === id);
@@ -934,7 +959,7 @@
   }
   function showRelics() {
     showScreen('relic', '<div class="screen-kicker">RELIC RECOVERED / 遗迹奖励</div><h2 id="screen-title">带走一件，改变打法。</h2><p>选择一件本局持续生效的遗物。战场已暂停，无需增加操作按键。</p><div class="upgrade-grid relic-grid">' + game.relicChoices.map((relic, i) => '<button class="upgrade-card weapon-mod" data-relic="' + relic.id + '"><small>战术遗物 · 本局唯一</small><span class="upgrade-icon">' + relic.icon + '</span><b>' + relic.title + '</b><p>' + relic.description + '</p><em>装备遗物 · 按 ' + (i + 1) + ' ↗</em></button>').join('') + '</div>');
-    $('screen-content').querySelectorAll('[data-relic]').forEach(button => button.addEventListener('click', () => selectRelic(button.dataset.relic)));
+    $('screen-content').querySelectorAll('[data-relic]').forEach(button => bindMenuChoice(button, () => selectRelic(button.dataset.relic)));
   }
   function selectRelic(id) {
     if (!game.chooseRelic(id)) return;

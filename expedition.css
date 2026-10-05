@@ -391,6 +391,7 @@ body.immersive-page{overflow:hidden}
 .event-banner small{font-size:8px;letter-spacing:1px;margin-bottom:2px}
 .event-banner strong{display:block;font-size:16px;line-height:1.45;letter-spacing:.5px}
 .notification{top:58px;bottom:auto;max-width:min(520px,calc(100% - 540px));padding:6px 10px;font-size:11px;line-height:1.5;background:#142b2bd9;border-color:#6f969066}
+@media(pointer:fine){.notification,.notification.visible{transform:translateX(-50%)}.notification:not(.visible){visibility:hidden}}
 .game-stage:is(:fullscreen,.immersive) .event-banner{top:54px}
 .game-stage:is(:fullscreen,.immersive) .notification{top:98px}
 .player-hud,.objective-hud{background:#102127b0;backdrop-filter:blur(3px)}

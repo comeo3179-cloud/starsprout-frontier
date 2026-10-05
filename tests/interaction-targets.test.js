@@ -25,6 +25,44 @@ function selected(game, target, action) {
   return state;
 }
 
+function passingSalvageDrone() {
+  const game = new Game({ mode: 'salvage', seed: 731 }); game.start();
+  const drone = game.salvage.sources.find(source => source.kind === 'drone');
+  const crate = game.crates.find(item => item.x === 1850 && item.y === 830);
+  // Position fixture at the real patrol's southwest corner and the real supply crate.
+  Object.assign(drone, drone.path[3], { pathIndex: 0 });
+  Object.assign(game.player, { x: crate.x, y: crate.y - 50 });
+  return { game, drone, crate };
+}
+
+test('a passing locked salvage drone cannot disable an available supply crate', () => {
+  const { game, drone, crate } = passingSalvageDrone();
+  assert.ok(Math.hypot(drone.x - game.player.x, drone.y - game.player.y) < 94);
+  assert.equal(drone.status, 'flying');
+  selected(game, crate, '开启');
+  assert.equal(game.interact(), true);
+  assert.equal(crate.opened, true); assert.equal(game.player.credits, 14);
+  assert.equal(drone.status, 'flying'); assert.equal(drone.hp, 90); assert.equal(game.salvage.alarm, 0);
+  assert.match(selected(game, drone, '').hint, /先射击截停/);
+});
+
+test('an executable salvage recovery keeps its priority and returns to the supply after collection', () => {
+  const { game, drone, crate } = passingSalvageDrone();
+  game._damageSalvageSource(drone, 90);
+  selected(game, drone, '回收'); assert.equal(game.interact(), true);
+  assert.equal(game.salvage.carried, 3); assert.equal(game.salvage.alarm, 12); assert.equal(crate.opened, false);
+  selected(game, crate, '开启'); assert.equal(game.interact(), true);
+  assert.equal(game.player.credits, 14); assert.equal(game.salvage.carried, 3);
+});
+
+test('salvage interaction fallback never enables supply actions during a paused choice or terminal phase', () => {
+  const { game, drone, crate } = passingSalvageDrone();
+  for (const phase of ['upgrade', 'relic', 'ready', 'won', 'lost']) {
+    game.phase = phase; selected(game, drone, ''); assert.equal(game.interact(), false);
+    assert.equal(crate.opened, false); assert.equal(game.player.credits, 0);
+  }
+});
+
 test('a busy foundry contract no longer hides the nearby supply crate', () => {
   const game = arena('foundry');
   const hunt = game.contracts.find(contract => contract.kind === 'hunt');

@@ -17,7 +17,8 @@ const functions = [
   ['movement', '\n  function requestDash'], ['requestDash', '\n  function updateDashBuffer'],
   ['updateDashBuffer', '\n  function updateDashControl'], ['updateDashControl', "\n  FrontierTouch.bindTouchAction($('dash-button')"],
   ['updateCoach', '\n  function updateHUD'], ['updateReloadMeter', '\n  function updateCoach'], ['updateInteraction', '\n  function switchWeapon'],
-  ['interact', '\n  function updateInteraction'], ['encounterStatus', '\n  function showRiftGuide'], ['showMap', '\n  function closeMap']
+  ['interact', '\n  function updateInteraction'], ['encounterStatus', '\n  function showRiftGuide'], ['showMap', '\n  function closeMap'],
+  ['bindMenuChoice', '\n  function showMap']
 ].map(([name, next]) => implementation(name, next)).join('\n');
 
 function node() {
@@ -274,4 +275,179 @@ test('touch dash remains available for a legal ice pursuit while ordinary cooldo
   assert.equal(context.requestDash(), true);
   assert.equal(game.player.iceChaseReady, false);
   assert.ok(game.player.dashCooldown >= game.player.dashCooldownMax + .8);
+});
+
+function menuCard(dataset, disabled = false) {
+  const listeners = new Map();
+  return { dataset, disabled, addEventListener(type, callback) {
+    if (!listeners.has(type)) listeners.set(type, []); listeners.get(type).push(callback);
+  }, send(type, values = {}) {
+    const event = { type, pointerId: 3, pointerType: 'touch', isPrimary: false, clientX: 50, clientY: 50,
+      detail: type === 'click' ? 1 : 0, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }, ...values };
+    for (const listener of listeners.get(type) || []) listener(event);
+    return event;
+  } };
+}
+
+function upgradeUi() {
+  const game = new Game({ mode: 'salvage', seed: 731 }); game.start();
+  game.player.xp = game.player.xpNeeded; game._levelUp(); game.drainEvents();
+  let buttons = [], now = 1000;
+  const calls = [], touch = { moveX: 1, moveY: 0, shoot: true }, pointer = { down: true, shotQueued: true };
+  const context = vm.createContext({ game, weapons: WEAPONS, touch, pointer, keys: new Set(['KeyD']), queuedDash: { remaining: .1 },
+    stickResets: [], paused: false, screen: '', activeRevelation: null, lastPhase: 'upgrade', Date: { now: () => now },
+    $: () => ({ querySelectorAll: () => buttons }), tone() {}, processEvents() {}, notify() {},
+    showScreen(type, html) { context.screen = type; buttons = [...html.matchAll(/data-upgrade="([^"]+)"/g)].map(match => menuCard({ upgrade: match[1] })); },
+    closeScreen() { context.screen = ''; context.clearInput(); }
+  });
+  vm.runInContext([
+    implementation('clearInput', '\n  function canPlay'), implementation('canPlay', '\n\n  function tone'),
+    implementation('bindMenuChoice', '\n  function showMap'),
+    implementation('showUpgrade', '\n  function selectUpgrade'), implementation('selectUpgrade', '\n  function showRelics')
+  ].join('\n'), context);
+  const select = context.selectUpgrade;
+  context.selectUpgrade = id => { calls.push(id); return select(id); };
+  context.showUpgrade();
+  return { game, context, touch, pointer, calls, card: () => buttons[0], advanceClock(ms) { now += ms; } };
+}
+
+test('a third finger can select an upgrade on release while cleared old stick input stays stopped', () => {
+  const f = upgradeUi(), button = f.card(), elapsed = f.game.elapsed;
+  f.game.update(.25, f.touch); assert.equal(f.game.elapsed, elapsed, 'Upgrade freezes the real simulation');
+  assert.equal(button.send('pointerdown').defaultPrevented, false, 'Down permits native card scrolling and never selects');
+  assert.deepEqual(f.calls, []); assert.equal(f.game.phase, 'upgrade');
+  button.send('pointerup', { clientX: 52, clientY: 53 });
+  assert.deepEqual(f.calls, [button.dataset.upgrade]); assert.equal(f.game.phase, 'playing'); assert.equal(f.context.screen, '');
+  const start = { x: f.game.player.x, y: f.game.player.y }, ammo = f.game.player.ammo;
+  f.game.update(.1, f.touch);
+  assert.equal(f.game.player.x, start.x); assert.equal(f.game.player.y, start.y); assert.equal(f.game.player.ammo, ammo);
+  assert.equal(f.pointer.down, false); assert.equal(f.pointer.shotQueued, false); assert.equal(f.context.queuedDash, null);
+});
+
+test('secondary upgrade scrolls and cancellations cannot choose, including a compatibility click after release', () => {
+  for (const cancellation of ['move', 'return', 'cancel', 'release-distance', 'wrong-pointer']) {
+    const f = upgradeUi(), button = f.card(); button.send('pointerdown');
+    if (cancellation === 'move' || cancellation === 'return') button.send('pointermove', { clientY: 82 });
+    if (cancellation === 'return') button.send('pointermove');
+    if (cancellation === 'cancel') { f.advanceClock(5000); button.send('pointercancel'); }
+    button.send('pointerup', cancellation === 'release-distance' ? { clientX: 75 } : cancellation === 'wrong-pointer' ? { pointerId: 9 } : {});
+    button.send('click', { pointerType: 'touch' });
+    assert.deepEqual(f.calls, [], cancellation); assert.equal(f.game.phase, 'upgrade');
+  }
+});
+
+test('upgrade touch release deduplicates modern and legacy clicks while keyboard and fresh primary taps remain usable', () => {
+  const f = upgradeUi(), button = f.card(); button.send('pointerdown'); f.advanceClock(5000); button.send('pointerup');
+  for (const values of [{ pointerType: 'touch' }, { pointerType: undefined, sourceCapabilities: { firesTouchEvents: true } }, { pointerType: undefined }]) {
+    assert.equal(button.send('click', values).defaultPrevented, true);
+  }
+  assert.equal(f.calls.length, 1);
+  for (const input of ['keyboard', 'primary', 'mouse', 'pen']) {
+    const next = upgradeUi(), target = next.card();
+    target.send('pointerdown'); target.send('pointercancel');
+    if (input === 'keyboard') target.send('click', { detail: 0, pointerType: '' });
+    else {
+      target.send('pointerdown', { pointerType: input === 'primary' ? 'touch' : input, isPrimary: true });
+      target.send('pointerup', { pointerType: input === 'primary' ? 'touch' : input, isPrimary: true });
+      target.send('click', { pointerType: input === 'primary' ? 'touch' : input });
+    }
+    assert.equal(next.calls.length, 1, input); assert.equal(next.game.phase, 'playing', input);
+  }
+});
+
+function mapChoiceUi(kind, map = 'frontier') {
+  const game = new Game({ mode: kind === 'salvageTarget' ? 'salvage' : 'standard', seed: 2 });
+  if (!game.salvage) game.reset(map); game.start();
+  const all = [], elements = new Map(), touch = { moveX: 1, moveY: 0, shoot: true }; let closes = 0;
+  function container() {
+    const element = node(); let html = '', cards = [];
+    Object.defineProperty(element, 'innerHTML', { get: () => html, set(value) {
+      html = value; cards = [...value.matchAll(/<button\b([^>]*)>/g)].map(match => {
+        const dataset = {};
+        for (const attr of match[1].matchAll(/data-([a-z-]+)="([^"]+)"/g)) dataset[attr[1].replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())] = attr[2];
+        const card = menuCard(dataset, /\bdisabled\b/.test(match[1])); all.push(card); return card;
+      });
+    } });
+    element.querySelectorAll = selector => cards.filter(card => card.dataset[selector.slice(6, -1).replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())] !== undefined);
+    return element;
+  }
+  const context = vm.createContext({ game, screen: '', paused: false, mapReturn: '', activeRevelation: null,
+    trackedRelayId: game.relays[1]?.id ?? null, trackedContractId: null, trackedEncounterId: null,
+    touch, pointer: { down: true, shotQueued: true }, keys: new Set(['KeyD']), queuedDash: { remaining: .1 }, stickResets: [],
+    renderer: { drawMinimap() {} }, FrontierTouch: require('../touch-actions.js'),
+    $: id => { if (!elements.has(id)) elements.set(id, container()); return elements.get(id); }, document: { createElement: container },
+    showScreen(type, html) { context.screen = type; context.clearInput(); context.$('screen-content').innerHTML = html; },
+    closeMap() { closes++; context.screen = ''; context.paused = false; context.clearInput(); }, tone() {}, notify() {}
+  });
+  vm.runInContext(functions + '\n' + implementation('salvageStateText', '\n  function showSalvageResult'), context); context.showMap();
+  return { game, context, touch, card: all.find(card => card.dataset[kind] !== undefined && !card.disabled), disabled: all.find(card => card.disabled),
+    closes: () => closes, selected: () => kind === 'salvageTarget' ? game.salvage.selectedId : context[{ target: 'trackedRelayId', contract: 'trackedContractId', encounter: 'trackedEncounterId' }[kind]] };
+}
+
+test('all four map destinations accept a secondary tap once and clear held input on return', () => {
+  for (const kind of ['target', 'contract', 'encounter', 'salvageTarget']) {
+    const f = mapChoiceUi(kind), button = f.card, before = f.selected();
+    assert.equal(f.context.canPlay(), false); assert.notEqual(before, Number(button.dataset[kind]));
+    button.send('pointerdown'); assert.equal(f.closes(), 0);
+    button.send('pointerup'); assert.equal(f.selected(), Number(button.dataset[kind])); assert.equal(f.closes(), 1);
+    button.send('click', { pointerType: 'touch' }); button.send('click', { pointerType: undefined }); assert.equal(f.closes(), 1);
+    assert.equal(f.context.canPlay(), true); assert.equal(f.context.queuedDash, null); assert.equal(f.context.pointer.down, false);
+    const beforePlayer = { x: f.game.player.x, y: f.game.player.y, ammo: f.game.player.ammo }; f.game.update(.1, f.touch);
+    assert.deepEqual({ x: f.game.player.x, y: f.game.player.y, ammo: f.game.player.ammo }, beforePlayer);
+  }
+});
+
+test('map scrolling, cancellation and disabled targets never choose, while ordinary and keyboard clicks still work', () => {
+  for (const kind of ['target', 'contract', 'encounter', 'salvageTarget']) for (const cancellation of ['scroll', 'cancel']) {
+    const f = mapChoiceUi(kind), button = f.card, before = f.selected(); button.send('pointerdown');
+    button.send(cancellation === 'scroll' ? 'pointermove' : 'pointercancel', { clientY: 95 }); button.send('pointerup'); button.send('click', { pointerType: 'touch' });
+    assert.equal(f.selected(), before); assert.equal(f.closes(), 0); assert.equal(f.context.canPlay(), false);
+    button.send('click', { pointerType: 'mouse' }); assert.equal(f.closes(), 1);
+    const keyboard = mapChoiceUi(kind); keyboard.card.send('click', { detail: 0, pointerType: '' }); assert.equal(keyboard.closes(), 1);
+  }
+  const locked = mapChoiceUi('target', 'frost'); assert.ok(locked.disabled);
+  locked.disabled.send('pointerdown'); locked.disabled.send('pointerup'); locked.disabled.send('click', { detail: 0 }); assert.equal(locked.closes(), 0);
+  const changing = mapChoiceUi('salvageTarget'); changing.card.send('pointerdown'); changing.card.disabled = true; changing.card.send('pointerup'); assert.equal(changing.closes(), 0);
+});
+
+function rewardUi(kind) {
+  const game = new Game({ seed: 2 }); game.start();
+  const terminal = (kind === 'relic' ? game.contracts : game.encounters)[0]; terminal.status = 'ready';
+  game.player.x = terminal.x; game.player.y = terminal.y;
+  assert.equal(game.interact(), true); assert.equal(game.phase, kind); game.drainEvents();
+  let buttons = []; const calls = [], touch = { moveX: 1, moveY: 0, shoot: true };
+  const context = vm.createContext({ game, touch, weapons: WEAPONS, Expedition: require('../action-engine.js'),
+    pointer: { down: true, shotQueued: true }, keys: new Set(['KeyD']), queuedDash: { remaining: .1 }, stickResets: [], paused: false,
+    screen: '', activeRevelation: null, lastPhase: kind, Date: { now: () => 1000 }, tone() {}, processEvents() {},
+    $: () => ({ querySelectorAll: () => buttons }), showScreen(type, html) {
+      context.screen = type; context.clearInput(); buttons = [...html.matchAll(new RegExp('data-' + kind + '="([^" ]+)"', 'g'))].map(match => menuCard({ [kind]: match[1] }));
+    }, closeScreen() { context.screen = ''; context.clearInput(); }
+  });
+  vm.runInContext([
+    implementation('clearInput', '\n  function canPlay'), implementation('canPlay', '\n\n  function tone'), implementation('bindMenuChoice', '\n  function showMap'),
+    implementation('showRelics', '\n  function selectRelic'), implementation('selectRelic', '\n  function showResult'),
+    implementation('showTactics', '\n  function selectTactic'), implementation('selectTactic', '\n  function addTacticSummary')
+  ].join('\n'), context);
+  const method = kind === 'relic' ? 'selectRelic' : 'selectTactic', select = context[method]; context[method] = id => { calls.push(id); return select(id); };
+  context[kind === 'relic' ? 'showRelics' : 'showTactics']();
+  return { game, context, touch, calls, card: buttons[0], acquired: () => kind === 'relic' ? game.relics.includes(buttons[0].dataset[kind]) : game.tacticId === buttons[0].dataset[kind] };
+}
+
+test('legal terminal relic and tactic rewards accept secondary release once and resume without old input', () => {
+  for (const kind of ['relic', 'tactic']) {
+    const f = rewardUi(kind), elapsed = f.game.elapsed; f.game.update(.25, f.touch); assert.equal(f.game.elapsed, elapsed);
+    f.card.send('pointerdown'); assert.equal(f.acquired(), false); assert.equal(f.game.phase, kind);
+    f.card.send('pointerup'); assert.equal(f.acquired(), true); assert.equal(f.game.phase, 'playing'); assert.equal(f.context.screen, '');
+    f.card.send('click', { pointerType: 'touch' }); f.card.send('click', { pointerType: undefined }); assert.equal(f.calls.length, 1);
+    const before = { x: f.game.player.x, y: f.game.player.y, ammo: f.game.player.ammo }; f.game.update(.1, f.touch);
+    assert.deepEqual({ x: f.game.player.x, y: f.game.player.y, ammo: f.game.player.ammo }, before); assert.equal(f.context.queuedDash, null);
+  }
+});
+
+test('reward card drags and cancellations preserve the pending legal reward and keyboard selection', () => {
+  for (const kind of ['relic', 'tactic']) for (const cancellation of ['pointermove', 'pointercancel']) {
+    const f = rewardUi(kind); f.card.send('pointerdown'); f.card.send(cancellation, { clientY: 85 }); f.card.send('pointerup'); f.card.send('click', { pointerType: 'touch' });
+    assert.equal(f.acquired(), false); assert.equal(f.game.phase, kind); assert.equal(f.context.canPlay(), false); assert.equal(f.calls.length, 0);
+    f.card.send('click', { detail: 0, pointerType: '' }); assert.equal(f.acquired(), true); assert.equal(f.game.phase, 'playing'); assert.equal(f.calls.length, 1);
+  }
 });
