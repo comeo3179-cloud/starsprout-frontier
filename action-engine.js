@@ -164,6 +164,12 @@
     { id: 'normal', title: '启航', description: '标准生命与伤害，有限巡逻和增援。', hp: 1, damage: 1 },
     { id: 'overload', title: '超载', description: '敌人生命增加 20%、伤害增加 12%；来源和增援数量不变。', hp: 1.2, damage: 1.12 }
   ];
+  const SALVAGE_LOADOUTS = [
+    { id: 'free', title: '自由回收', weapon: 0, tacticId: '' },
+    { id: 'decoy', title: '游击飞刃', weapon: 4, tacticId: 'decoy-dash' },
+    { id: 'gravity', title: '聚拢爆破', weapon: 3, tacticId: 'gravity-pulse' },
+    { id: 'mine', title: '精准布雷', weapon: 2, tacticId: 'reload-mine' }
+  ];
   const SALVAGE_MAP = { id: 'salvage', name: '危险回收区', subtitle: '自主撤离', mode: 'salvage', objectiveLabel: '样本', color: '#9fe9d4',
     description: '截停货运、启动钻探、选择静默或暴力开箱，带着样本自主撤离。',
     briefing: '样本带上舰才计奖金。E 回收或呼叫接应；舰到后在圈内累计 3 秒登舰，离圈暂停。空手也能返回。',
@@ -300,6 +306,8 @@
 
     _configureSalvage(options) {
       const seed = Number.isFinite(options.seed) ? Math.trunc(options.seed) >>> 0 : 1;
+      const loadout = SALVAGE_LOADOUTS.find(item => item.id === options.loadoutId) || SALVAGE_LOADOUTS[0];
+      this.player.weapon = loadout.weapon; this.tacticId = loadout.tacticId; this._syncWeapon();
       const seeded = initial => {
         let state = initial;
         return () => {
@@ -338,7 +346,7 @@
       const commsPoint = commsPoints[Math.floor(commsRandom() * commsPoints.length)];
       const comms = { id: this._id(), type: 'salvage-comms', name: '通讯站', x: commsPoint.x + Math.floor(commsRandom() * 51) - 25,
         y: commsPoint.y + Math.floor(commsRandom() * 51) - 25, radius: 28, workRadius: 120, duration: 5, progress: 0, status: 'idle' };
-      this.salvage = { seed, difficulty: SALVAGE_DIFFICULTIES.some(item => item.id === options.difficulty) ? options.difficulty : 'normal',
+      this.salvage = { seed, loadoutId: loadout.id, difficulty: SALVAGE_DIFFICULTIES.some(item => item.id === options.difficulty) ? options.difficulty : 'normal',
         status: 'exploring', carried: 0, settled: 0, lostSamples: 0, bonus: 0, cargoBonus: 0, hotCargo, comms, alarm: 0, alertLevel: 1,
         thresholds: [false, false, false], sources, exits, selectedId: null, evac: null, lastChance: null, pending: [], spawnTimer: 3, spawned: 0,
         hazardTimer: 9, fieldStats: { fractures: 0, detonations: 0, captures: 0 } };
@@ -3940,5 +3948,5 @@
   }
 
   return { Game, WEAPONS, UPGRADES, EVOLUTIONS, ENEMIES, RELICS, TACTICS, MAPS, SECRETS, TRIAL_WAVES, CAMPAIGN_DOCTRINES, CAMPAIGN_AWAKENINGS, CAMPAIGN_CRISES, CAMPAIGN_SUPPLIES, CAMPAIGN_NEXUS,
-    VOYAGE_DEVICES, VOYAGE_RESONANCES, VOYAGE_DIFFICULTIES, VOYAGE_ROOMS, VOYAGE_BIOMES, BATTLEFIELD_GUIDE, SALVAGE_DIFFICULTIES, SALVAGE_MAP };
+    VOYAGE_DEVICES, VOYAGE_RESONANCES, VOYAGE_DIFFICULTIES, VOYAGE_ROOMS, VOYAGE_BIOMES, BATTLEFIELD_GUIDE, SALVAGE_DIFFICULTIES, SALVAGE_LOADOUTS, SALVAGE_MAP };
 });
