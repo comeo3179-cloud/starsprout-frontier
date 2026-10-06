@@ -72,8 +72,20 @@ function audit(seed) {
       assert.notEqual(geometry.connect(p), null, `Seed ${seed}: player can reach drone path segment ${index} point ${at}`); droneAccessPoints++;
     }
   }
+  const lastChanceRoutes = game.salvage.exits.map((_, index) => {
+    const called = new Game({ mode: 'salvage', seed }); called.start();
+    const exit = called.salvage.exits[index]; Object.assign(called.player, { x: exit.x, y: exit.y });
+    assert.ok(called.interact(), 'Geometry fixture calls the actual exit interaction');
+    const chance = called.salvage.lastChance; assert.ok(chance, `Seed ${seed}: optional offer exists at exit ${index}`);
+    assert.notEqual(geometry.connect(chance), null, 'Future cargo connects to the spawn graph');
+    assert.ok(geometry.clear(exit, chance), 'A complete independently swept route connects exit and cargo');
+    assert.ok(Math.hypot(chance.x - exit.x, chance.y - exit.y) > exit.radius + 94, 'Cargo collection stays outside boarding circle');
+    assert.ok([...called.salvage.sources, called.salvage.hotCargo, called.salvage.comms, ...called.stations, ...called.crates]
+      .every(target => Math.hypot(chance.x - target.x, chance.y - target.y) > 188), 'Collection circle does not overlap other interaction circles');
+    return { exitId: exit.id, x: chance.x, y: chance.y, remaining: chance.remaining, value: chance.value };
+  });
   const geometrySha256 = hash(JSON.stringify({ obstacles: game.obstacles, sources: game.salvage.sources, exits: game.salvage.exits, cargo: game.salvage.hotCargo, comms: game.salvage.comms, stations: game.stations, crates: game.crates }));
-  return { seed, obstacles: game.obstacles.length, geometrySha256, reachedNodes: geometry.reached, totalNodes: geometry.nodes, targets: checked, droneAccessPoints, droneMinClearance: round(droneMinClearance) };
+  return { seed, obstacles: game.obstacles.length, geometrySha256, reachedNodes: geometry.reached, totalNodes: geometry.nodes, targets: checked, lastChanceRoutes, droneAccessPoints, droneMinClearance: round(droneMinClearance) };
 }
 function walkLayout(seed) {
   const game = new Game({ mode: 'salvage', seed }); game.start(); game.salvage.pending = []; game.enemies = [];

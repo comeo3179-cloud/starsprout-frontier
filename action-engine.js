@@ -340,7 +340,7 @@
         y: commsPoint.y + Math.floor(commsRandom() * 51) - 25, radius: 28, workRadius: 120, duration: 5, progress: 0, status: 'idle' };
       this.salvage = { seed, difficulty: SALVAGE_DIFFICULTIES.some(item => item.id === options.difficulty) ? options.difficulty : 'normal',
         status: 'exploring', carried: 0, settled: 0, lostSamples: 0, bonus: 0, cargoBonus: 0, hotCargo, comms, alarm: 0, alertLevel: 1,
-        thresholds: [false, false, false], sources, exits, selectedId: null, evac: null, pending: [], spawnTimer: 3, spawned: 0,
+        thresholds: [false, false, false], sources, exits, selectedId: null, evac: null, lastChance: null, pending: [], spawnTimer: 3, spawned: 0,
         hazardTimer: 9, fieldStats: { fractures: 0, detonations: 0, captures: 0 } };
       this.stations = [{ x: 710, y: 1650, kind: 'medical' }, { x: 1320, y: 960, kind: 'armory' }, { x: 2170, y: 1470, kind: 'medical' }]
         .map(point => ({ ...point, id: this._id(), type: 'station', radius: 29, name: point.kind === 'medical' ? '医疗舱' : '武器工坊', cost: point.kind === 'medical' ? 10 : 20, uses: 0 }));
@@ -365,12 +365,37 @@
       this._queueSalvage(['crawler', 'crawler', 'spitter', 'crawler', 'breacher', 'spitter', 'crawler', 'bulwark'], 'patrol');
     }
 
+    _openSalvageLastChance(exit) {
+      const salvage = this.salvage;
+      if (salvage.lastChance) return;
+      let state = salvage.seed ^ 0xE76A952D;
+      state = Math.imul(state ^ state >>> 16, 0x7FEB352D);
+      state = Math.imul(state ^ state >>> 15, 0x846CA68B);
+      const angle = ((state ^ state >>> 16) >>> 0) / 4294967296 * TAU;
+      const targets = [...salvage.sources, ...salvage.exits, salvage.hotCargo, salvage.comms, ...this.stations, ...this.crates];
+      let point;
+      for (let index = 0; index < 64; index++) {
+        const reach = [280, 320, 360, 420][Math.floor(index / 16)], direction = angle + index % 16 * TAU / 16;
+        const candidate = { x: exit.x + Math.cos(direction) * reach, y: exit.y + Math.sin(direction) * reach };
+        if (candidate.x < 50 || candidate.y < 50 || candidate.x > this.world.width - 50 || candidate.y > this.world.height - 50 ||
+          targets.some(target => distance(candidate, target) <= (target.type === 'salvage-exit' ? target.radius + 94 : 188)) ||
+          this.obstacles.some(rock => this._segmentHit(exit.x, exit.y, candidate.x - exit.x, candidate.y - exit.y, rock, this.player.radius + 8) !== null) ||
+          this.battlefield.props.some(field => distance(candidate, field) <= field.blastRadius + 24)) continue;
+        point = candidate; break;
+      }
+      if (!point) return;
+      const cargo = salvage.lastChance = { ...point, id: this._id(), type: 'salvage-lastchance', name: '应急货箱', radius: 24,
+        status: 'available', value: 4, duration: 18, remaining: 18 };
+      this._emit('salvage-lastchance-appear', cargo, { sourceId: cargo.id, value: cargo.value, duration: cargo.duration, remaining: cargo.remaining, color: '#ffc18a' });
+    }
+
     _salvageTargets() {
       const salvage = this.salvage;
       if (!salvage || ['extracted', 'withdrawn', 'failed'].includes(salvage.status)) return [];
       return [...salvage.sources.filter(source => source.status !== 'collected'), ...salvage.exits,
         ...(['ground', 'dropped'].includes(salvage.hotCargo.status) ? [salvage.hotCargo] : []),
-        ...(['idle', 'linking'].includes(salvage.comms.status) ? [salvage.comms] : [])];
+        ...(['idle', 'linking'].includes(salvage.comms.status) ? [salvage.comms] : []),
+        ...(salvage.lastChance?.status === 'available' && salvage.lastChance.remaining > 0 ? [salvage.lastChance] : [])];
     }
 
     salvageTarget() {
@@ -391,6 +416,8 @@
         hint: '带回奖金 +' + target.bonus + ' · 武器伤害 +15% · 携带每 12 秒广播，可随时放下', progress: 0, total: 0 };
       if (target.type === 'salvage-comms') return { id: target.id, x: target.x, y: target.y, kind: 'comms', label: target.name,
         hint: target.status === 'linking' ? '圈内架设，离圈暂停' : '可用 EMP 换一次拦截 · 架设 5 秒 · 只挡下一波警戒增援', progress: target.progress, total: target.duration };
+      if (target.type === 'salvage-lastchance') return { id: target.id, x: target.x, y: target.y, kind: 'lastchance', label: target.name,
+        hint: Math.ceil(target.remaining) + ' 秒 · 样本 +4 / 带回 320 · 取货后 2 名追兵', progress: target.duration - target.remaining, total: target.duration };
       const hint = target.kind === 'drill' ? target.status === 'drilling' ? '圈内推进，离圈暂停；可以继续作战' : '靠近按 E 钻探，圈内累计 8 秒' :
         target.status === 'open' ? '靠近按 E 回收货物' : target.kind === 'vault' ? target.quietTimer > 0 ? '临时解锁中，靠近按 E 安静领取' : '近处 EMP 静默解锁，或射击暴力破锁' : '射击截停，再靠近按 E 回收';
       return { id: target.id, x: target.x, y: target.y, kind: target.kind, label: target.status === 'open' && target.kind === 'drone' ? '无人机货物' : target.name, hint,
@@ -472,6 +499,9 @@
           source.kind === 'vault' ? '近处 EMP 静默解锁，或射击暴力破锁' : '先射击截停运输无人机';
         return { target: source, action: this.phase === 'playing' ? action : '', hint };
       }
+      const cargo = salvage.lastChance;
+      if (cargo?.status === 'available' && cargo.remaining > 0 && distance(this.player, cargo) <= 94)
+        return { target: cargo, action: this.phase === 'playing' ? '回收应急货箱' : '', hint: 'E · 样本 +4 / 带回 320 · 剩余 ' + Math.ceil(cargo.remaining) + ' 秒 · 取货后 2 名追兵' };
       const exit = salvage.exits.filter(item => distance(this.player, item) <= item.radius)
         .sort((a, b) => distance(this.player, a) - distance(this.player, b))[0];
       if (!exit) return null;
@@ -506,7 +536,13 @@
 
     _interactSalvage(target) {
       const salvage = this.salvage;
-      if (target.type === 'salvage-comms') {
+      if (target.type === 'salvage-lastchance') {
+        if (this.phase !== 'playing' || this.player.hp <= 0 || target !== salvage.lastChance || target.status !== 'available' || target.remaining <= 0 || distance(this.player, target) > 94) return false;
+        target.status = 'collected'; salvage.carried += target.value;
+        if (salvage.selectedId === target.id) salvage.selectedId = null;
+        this._queueSalvage(['charger', 'spitter'], 'lastchance');
+        this._emit('salvage-lastchance-collected', target, { sourceId: target.id, value: target.value, duration: target.duration, remaining: target.remaining, carried: salvage.carried, color: '#ffc18a' });
+      } else if (target.type === 'salvage-comms') {
         if (this.phase !== 'playing' || target !== salvage.comms || target.status !== 'idle' || this.player.skillCooldown > 0 ||
           distance(this.player, target) > 94 || salvage.thresholds.every(Boolean)) return false;
         target.status = 'linking'; this.player.skillCooldown = this.player.skillCooldownMax;
@@ -522,6 +558,7 @@
         salvage.status = 'approaching'; salvage.selectedId = target.id;
         this._queueSalvage(['crawler', 'spitter', 'crawler', 'engineer', 'charger', 'bulwark'], 'evac');
         this._emit('salvage-call', target, { exitId: target.id, duration: target.arrivalDuration, color: '#9fe9d4' });
+        this._openSalvageLastChance(target);
       } else if (target.kind === 'drill' && target.status === 'idle') {
         target.status = 'drilling';
         this._queueSalvage(['crawler', 'crawler', 'spitter', 'crawler', 'breacher', 'crawler'], 'drill-' + target.id);
@@ -553,6 +590,15 @@
       const salvage = this.salvage;
       if (!salvage || this.phase !== 'playing') return;
       this.pressurePhase = salvage.evac ? 'evac' : salvage.pending.length || this.enemies.some(enemy => enemy.hp > 0) ? 'pressure' : 'recovery';
+      const lastChance = salvage.lastChance;
+      if (lastChance?.status === 'available') {
+        lastChance.remaining = Math.max(0, lastChance.remaining - dt);
+        if (lastChance.remaining < 1e-9) {
+          lastChance.remaining = 0; lastChance.status = 'expired';
+          if (salvage.selectedId === lastChance.id) salvage.selectedId = null;
+          this._emit('salvage-lastchance-expired', lastChance, { sourceId: lastChance.id, value: lastChance.value, duration: lastChance.duration, remaining: 0, color: '#ffc18a' });
+        }
+      }
       const cargo = salvage.hotCargo;
       cargo.pickupLock = Math.max(0, cargo.pickupLock - dt);
       if (cargo.pickupLock < 1e-9) cargo.pickupLock = 0;
@@ -2581,7 +2627,7 @@
       if (this.phase !== 'playing') return false;
       const { target, action } = this.interactionState();
       if (!action) return false;
-      if (this.salvage && ['salvage-source', 'salvage-exit', 'salvage-cargo', 'salvage-comms'].includes(target.type)) return this._interactSalvage(target);
+      if (this.salvage && ['salvage-source', 'salvage-exit', 'salvage-cargo', 'salvage-comms', 'salvage-lastchance'].includes(target.type)) return this._interactSalvage(target);
       if (target.type === 'voyage-exit') return this._finishVoyageRoom();
       if (target.type === 'cargo') {
         if (!this.delivery || this.delivery.carriedId || !['source', 'dropped'].includes(target.status) || target.pickupLock > 0 || this.player.dashTimer > 1e-9) return false;

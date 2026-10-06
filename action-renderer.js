@@ -11,7 +11,7 @@
   const doctrineColors = { skirmisher: '#8cf5d3', marksman: '#ffd18c', conductor: '#c9b3ff' };
   const voyageColors = { cosmos: '#c8b7ff', forge: '#ffc88c', tide: '#94eadf' };
   const voyageDeviceColors = { afterimage: '#8fffe0', needles: '#b0ffe6', mirror: '#ffd9a2', sentry: '#fff0b7', well: '#b6c5ff', battery: '#d5baff' };
-  const salvageColors = { vault: '#f4cf96', drill: '#9ce8d3', drone: '#a9d6ff', exit: '#c7f4df', cargo: '#ffc18a', comms: '#b7c5ff' };
+  const salvageColors = { vault: '#f4cf96', drill: '#9ce8d3', drone: '#a9d6ff', exit: '#c7f4df', cargo: '#ffc18a', comms: '#b7c5ff', lastchance: '#ffe08b' };
 
   function path(ctx, points, close = true) {
     ctx.beginPath();
@@ -238,6 +238,10 @@
           case 'salvage-comms-start': case 'salvage-comms-ready': case 'salvage-comms-block': case 'salvage-comms-expired':
             this.rings.push({ x, y, radius: 35, age: 0, life: .35, color: salvageColors.comms });
             this.burst(x, y, salvageColors.comms, 5, 60, .3);
+            break;
+          case 'salvage-lastchance-appear': case 'salvage-lastchance-collected': case 'salvage-lastchance-expired':
+            this.rings.push({ x, y, radius: 35, age: 0, life: .35, color: salvageColors.lastchance });
+            if (event.type !== 'salvage-lastchance-expired') this.burst(x, y, salvageColors.lastchance, 5, 60, .3);
             break;
           case 'field-arm':
             this.burst(x, y, event.friendly ? '#8debd1' : '#ffc187', 4, 50, .25);
@@ -737,6 +741,8 @@
       for (const source of game.salvage?.sources || []) if (this.visible(source.x, source.y, source.radius + 35)) actors.push({ y: source.y, kind: 'salvage', data: source });
       const comms = game.salvage?.comms;
       if (comms && this.visible(comms.x, comms.y, comms.radius + 35)) actors.push({ y: comms.y, kind: 'salvage-comms', data: comms });
+      const lastChance = game.salvage?.lastChance;
+      if (lastChance?.status === 'available' && this.visible(lastChance.x, lastChance.y, lastChance.radius + 35)) actors.push({ y: lastChance.y, kind: 'salvage-lastchance', data: lastChance });
       const cargo = game.salvage?.hotCargo;
       if (cargo && ['ground', 'dropped', 'carried'].includes(cargo.status)) {
         const carried = cargo.status === 'carried', x = carried ? p.x : cargo.x, y = carried ? p.y : cargo.y;
@@ -756,6 +762,7 @@
         else if (actor.kind === 'field') this.drawBattlefieldObject(actor.data);
         else if (actor.kind === 'salvage') this.drawSalvageSource(actor.data);
         else if (actor.kind === 'salvage-comms') this.drawSalvageComms(actor.data, p);
+        else if (actor.kind === 'salvage-lastchance') this.drawSalvageLastChance(actor.data, p);
         else if (actor.kind === 'salvage-cargo') this.drawSalvageCargo(actor.data, p);
         else if (actor.kind === 'encounter') this.drawEncounter(actor.data, p);
         else if (actor.kind === 'enemy') this.drawEnemy(actor.data);
@@ -1303,6 +1310,22 @@
       if (this.interaction?.target === comms && Math.hypot(player.x - comms.x, player.y - comms.y) <= 94) {
         const status = comms.status === 'linking' ? '架设 ' + Math.round(comms.progress / comms.duration * 100) + '%' : comms.status === 'armed' ? '拦截待命' : comms.status === 'spent' ? '已拦截' : comms.status === 'expired' ? '增援已出动' : 'EMP 未就绪';
         this.drawEncounterLabel(this.interactionLabel(comms, status), comms.x, comms.y - comms.radius - 26 / this.scale, color, true);
+      }
+    }
+
+    drawSalvageLastChance(cache, player) {
+      if (cache.status !== 'available') return;
+      const ctx = this.ctx, color = salvageColors.lastchance;
+      ctx.save(); ctx.translate(cache.x, cache.y);
+      circle(ctx, 0, 7, cache.radius + 5, '#15262c88'); box(ctx, -23, -18, 46, 36, 4, '#3e4540', color);
+      ctx.fillStyle = '#263739'; ctx.fillRect(-17, -12, 34, 24);
+      for (const side of [-1, 1]) { ctx.fillStyle = color; ctx.fillRect(side * 16 - 2, -15, 4, 30); }
+      polygon(ctx, 0, 0, 9, 4, Math.PI / 4); ctx.fillStyle = color; ctx.fill();
+      circle(ctx, 0, 0, cache.radius + 11, null, '#ffe08b44', 1 / this.scale);
+      ctx.beginPath(); ctx.arc(0, 0, cache.radius + 11, -Math.PI / 2, -Math.PI / 2 + TAU * clamp(cache.remaining / cache.duration, 0, 1));
+      ctx.strokeStyle = color; ctx.lineWidth = 2 / this.scale; ctx.stroke(); ctx.restore();
+      if (this.interaction?.target === cache && this.interaction.action && Math.hypot(player.x - cache.x, player.y - cache.y) <= 94) {
+        this.drawEncounterLabel(this.interactionLabel(cache, '取货') + ' +' + cache.value, cache.x, cache.y - cache.radius - 26 / this.scale, color, true);
       }
     }
 
@@ -2976,6 +2999,15 @@
           labels.push({ id: comms.id, x, y, color, name: '通讯', status, texts: ['通讯 · ' + status, '通讯'] });
         }
       }
+      const lastChance = state.lastChance?.status === 'available' ? state.lastChance : null;
+      if (lastChance) {
+        const x = lastChance.x * scale, y = lastChance.y * scale, color = salvageColors.lastchance;
+        box(ctx, x - size, y - size, size * 2, size * 2, 1, '#28393a', color);
+        polygon(ctx, x, y, size * .6, 4, Math.PI / 4); ctx.fillStyle = color; ctx.fill();
+        ctx.beginPath(); ctx.arc(x, y, size + 4, -Math.PI / 2, -Math.PI / 2 + TAU * clamp(lastChance.remaining / lastChance.duration, 0, 1)); ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
+        if (target?.id === lastChance.id) circle(ctx, x, y, size + 6, null, '#fff4c8', 1.5);
+        if (detailed) labels.push({ id: lastChance.id, x, y, color, name: '货箱', priority: 1, texts: ['货箱 · ' + Math.ceil(lastChance.remaining) + 's/+' + lastChance.value, '货箱 +' + lastChance.value] });
+      }
       for (const exit of state.exits) {
         const x = exit.x * scale, y = exit.y * scale, active = state.evac?.exitId === exit.id, boarding = active && state.status === 'boarding', color = active ? '#d7ffeb' : '#8aacab';
         polygon(ctx, x, y, size + 2, 3, -Math.PI / 2); ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
@@ -2994,7 +3026,7 @@
         }
       }
       if (!detailed) return;
-      const world = game.world || this.world, placed = [], glyphs = [...state.sources, ...state.exits, ...(cargoPoint ? [cargoPoint] : []), ...(comms ? [comms] : []), ...(game.stations || []), game.player].map(point => ({ left: point.x * scale - size - 3, right: point.x * scale + size + 3, top: point.y * scale - size - 3, bottom: point.y * scale + size + 3 }));
+      const world = game.world || this.world, placed = [], glyphs = [...state.sources, ...state.exits, ...(cargoPoint ? [cargoPoint] : []), ...(comms ? [comms] : []), ...(lastChance ? [lastChance] : []), ...(game.stations || []), game.player].map(point => ({ left: point.x * scale - size - 3, right: point.x * scale + size + 3, top: point.y * scale - size - 3, bottom: point.y * scale + size + 3 }));
       bounds ||= { left: 0, right: world.width * scale, top: 0, bottom: world.height * scale };
       ctx.font = '600 10px "Microsoft YaHei", sans-serif'; ctx.textAlign = 'center';
       labels.sort((a, b) => (b.id === target?.id) - (a.id === target?.id) || (b.priority || 0) - (a.priority || 0));

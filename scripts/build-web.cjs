@@ -56,7 +56,7 @@ function verifyBundledEngine(jsName) {
     ''
   ].join('\n'));
   const originalImport = "require('../action-engine.js')";
-  const testPaths = ['action-engine', 'projectile-collision', 'damage-source', 'frame-timing', 'interaction-targets', 'grenade-preview', 'secret-techniques', 'secret-depth', 'trials', 'encounters', 'evolutions', 'storm-sector', 'campaign', 'campaign-integration', 'campaign-awakenings', 'ruins-starline', '4.0-integration', 'voyage', 'voyage-integration', 'battlefield', 'salvage', 'salvage-risk', 'salvage-comms'].map(name => {
+  const testPaths = ['action-engine', 'projectile-collision', 'damage-source', 'frame-timing', 'interaction-targets', 'grenade-preview', 'secret-techniques', 'secret-depth', 'trials', 'encounters', 'evolutions', 'storm-sector', 'campaign', 'campaign-integration', 'campaign-awakenings', 'ruins-starline', '4.0-integration', 'voyage', 'voyage-integration', 'battlefield', 'salvage', 'salvage-risk', 'salvage-comms', 'salvage-lastchance'].map(name => {
     const tests = read('tests/' + name + '.test.js');
     if (tests.split(originalImport).length !== 2) throw new Error('Expected one source engine import in ' + name);
     const testPath = path.join(verificationRoot, name + '.test.cjs');
