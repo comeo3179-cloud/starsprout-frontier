@@ -52,10 +52,10 @@ function graph(game) {
   };
   return { clear, connect, pathTo, reached: queue.length, nodes: cols * rows };
 }
-function targets(game) { return [...game.salvage.sources, ...game.salvage.exits, game.salvage.hotCargo, ...game.stations, ...game.crates]; }
+function targets(game) { return [...game.salvage.sources, ...game.salvage.exits, game.salvage.hotCargo, game.salvage.comms, ...game.stations, ...game.crates]; }
 function audit(seed) {
   const game = new Game({ mode: 'salvage', seed }), geometry = graph(game), checked = [];
-  assert.equal(targets(game).length, 17);
+  assert.equal(targets(game).length, 18);
   for (const target of targets(game)) {
     assert.notEqual(geometry.connect(target), null, `Seed ${seed}: ${target.name || target.kind || target.type} center is reachable`);
     const minRockClearance = Math.min(...game.obstacles.map(rock => Math.hypot(target.x - rock.x, target.y - rock.y) - rock.radius - game.player.radius));
@@ -72,7 +72,7 @@ function audit(seed) {
       assert.notEqual(geometry.connect(p), null, `Seed ${seed}: player can reach drone path segment ${index} point ${at}`); droneAccessPoints++;
     }
   }
-  const geometrySha256 = hash(JSON.stringify({ obstacles: game.obstacles, sources: game.salvage.sources, exits: game.salvage.exits, cargo: game.salvage.hotCargo, stations: game.stations, crates: game.crates }));
+  const geometrySha256 = hash(JSON.stringify({ obstacles: game.obstacles, sources: game.salvage.sources, exits: game.salvage.exits, cargo: game.salvage.hotCargo, comms: game.salvage.comms, stations: game.stations, crates: game.crates }));
   return { seed, obstacles: game.obstacles.length, geometrySha256, reachedNodes: geometry.reached, totalNodes: geometry.nodes, targets: checked, droneAccessPoints, droneMinClearance: round(droneMinClearance) };
 }
 function walkLayout(seed) {

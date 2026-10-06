@@ -67,7 +67,7 @@ async function cargoScene(scene, record) {
     for (const exit of initial.salvage.exits) rows[exit.name] = await page.locator('[data-salvage-target="' + exit.id + '"]').innerText();
     const cargoRow = page.locator('[data-salvage-target="' + initial.salvage.hotCargo.id + '"]'); rows.cargo = await cargoRow.innerText();
     assert.match(rows[initial.salvage.exits[0].name], /10 秒接应 · 空旷快线/); assert.match(rows[initial.salvage.exits[1].name], /16 秒接应 · 固定掩体/);
-    assert.match(rows.cargo, /480/); assert.match(rows.cargo, /武器 \+15% · 每 12 秒暴露 · 可以丢弃/); assert.equal(await page.locator('[data-salvage-target]').count(), 8);
+    assert.match(rows.cargo, /480/); assert.match(rows.cargo, /武器 \+15% · 每 12 秒暴露 · 可以丢弃/); assert.equal(await page.locator('[data-salvage-target]').count(), 9);
     await cargoRow.scrollIntoViewIfNeeded(); await page.waitForTimeout(100);
     record.mapRisks = { rows, cards: await page.evaluate(() => [...document.querySelectorAll('.salvage-exit,.salvage-cargo')].map(e => { const r = e.getBoundingClientRect(); return { label: e.innerText, x: r.x, y: r.y, width: r.width, height: r.height }; })) };
     await page.screenshot({ path: path.join(output, record.name + '-risk-map.png') });

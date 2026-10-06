@@ -1,6 +1,6 @@
 {
   "name": "starsprout",
-  "version": "7.2.1",
+  "version": "7.3.0",
   "description": "星芽：荒原行动，俯视角射击、探索生存与局内成长的浏览器游戏",
   "license": "MIT",
   "repository": {
@@ -9,6 +9,11 @@
   },
   "scripts": {
     "start": "node server.js",
+    "build": "node scripts/build-web.cjs",
     "test": "node --test tests/*.test.js"
+  },
+  "devDependencies": {
+    "clean-css": "5.3.3",
+    "terser": "5.43.1"
   }
 }

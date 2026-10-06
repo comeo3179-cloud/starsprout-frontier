@@ -1,4 +1,4 @@
-# 本仓库只发布游戏源码。以下内容留在本机，不进入版本库。
+# 本机依赖、发布产物与记录不进入版本库。
 # 构建与依赖
 build-tools/
 node_modules/
@@ -25,7 +25,6 @@ reports/
 
 # 质量检查与发布脚本：硬编码本机 Playwright 缓存路径与线上发布环境 ID，
 # 不随仓库分发；可移植的模拟和检查入口按需纳入仓库。
-scripts/build-web.cjs
 scripts/build-cloud-sdk.cjs
 scripts/check-coach-visibility.cjs
 scripts/check-voyage-browser-run.cjs

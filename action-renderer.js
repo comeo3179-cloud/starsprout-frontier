@@ -11,7 +11,7 @@
   const doctrineColors = { skirmisher: '#8cf5d3', marksman: '#ffd18c', conductor: '#c9b3ff' };
   const voyageColors = { cosmos: '#c8b7ff', forge: '#ffc88c', tide: '#94eadf' };
   const voyageDeviceColors = { afterimage: '#8fffe0', needles: '#b0ffe6', mirror: '#ffd9a2', sentry: '#fff0b7', well: '#b6c5ff', battery: '#d5baff' };
-  const salvageColors = { vault: '#f4cf96', drill: '#9ce8d3', drone: '#a9d6ff', exit: '#c7f4df', cargo: '#ffc18a' };
+  const salvageColors = { vault: '#f4cf96', drill: '#9ce8d3', drone: '#a9d6ff', exit: '#c7f4df', cargo: '#ffc18a', comms: '#b7c5ff' };
 
   function path(ctx, points, close = true) {
     ctx.beginPath();
@@ -234,6 +234,10 @@
             break;
           case 'salvage-cargo-pulse':
             this.rings.push({ x, y, radius: 130, age: 0, life: .65, color: salvageColors.cargo });
+            break;
+          case 'salvage-comms-start': case 'salvage-comms-ready': case 'salvage-comms-block': case 'salvage-comms-expired':
+            this.rings.push({ x, y, radius: 35, age: 0, life: .35, color: salvageColors.comms });
+            this.burst(x, y, salvageColors.comms, 5, 60, .3);
             break;
           case 'field-arm':
             this.burst(x, y, event.friendly ? '#8debd1' : '#ffc187', 4, 50, .25);
@@ -731,6 +735,8 @@
       for (const obstacle of game.obstacles || []) if (this.visible(obstacle.x, obstacle.y, obstacle.radius + 30)) actors.push({ y: obstacle.y, kind: 'rock', data: obstacle });
       for (const field of [...(game.battlefield?.props || []), ...(game.battlefield?.mines || [])]) if (field.status !== 'spent' && this.visible(field.x, field.y, (field.radius || 20) + 30)) actors.push({ y: field.y, kind: 'field', data: field });
       for (const source of game.salvage?.sources || []) if (this.visible(source.x, source.y, source.radius + 35)) actors.push({ y: source.y, kind: 'salvage', data: source });
+      const comms = game.salvage?.comms;
+      if (comms && this.visible(comms.x, comms.y, comms.radius + 35)) actors.push({ y: comms.y, kind: 'salvage-comms', data: comms });
       const cargo = game.salvage?.hotCargo;
       if (cargo && ['ground', 'dropped', 'carried'].includes(cargo.status)) {
         const carried = cargo.status === 'carried', x = carried ? p.x : cargo.x, y = carried ? p.y : cargo.y;
@@ -749,6 +755,7 @@
         if (actor.kind === 'rock') this.drawRock(actor.data);
         else if (actor.kind === 'field') this.drawBattlefieldObject(actor.data);
         else if (actor.kind === 'salvage') this.drawSalvageSource(actor.data);
+        else if (actor.kind === 'salvage-comms') this.drawSalvageComms(actor.data, p);
         else if (actor.kind === 'salvage-cargo') this.drawSalvageCargo(actor.data, p);
         else if (actor.kind === 'encounter') this.drawEncounter(actor.data, p);
         else if (actor.kind === 'enemy') this.drawEnemy(actor.data);
@@ -1231,16 +1238,19 @@
     drawSalvageFields(game) {
       const state = game.salvage, ctx = this.ctx;
       if (!state) return;
-      for (const source of state.sources) {
-        if (source.kind !== 'drill' || source.status !== 'drilling' || !this.visible(source.x, source.y, source.workRadius + 20)) continue;
+      const works = state.sources.filter(source => source.kind === 'drill' && source.status === 'drilling');
+      if (state.comms?.status === 'linking') works.push(state.comms);
+      for (const source of works) {
+        if (!this.visible(source.x, source.y, source.workRadius + 20)) continue;
+        const comms = source.type === 'salvage-comms';
         ctx.save(); ctx.translate(source.x, source.y);
         const paused = Math.hypot(game.player.x - source.x, game.player.y - source.y) > source.workRadius;
-        ctx.setLineDash([8 / this.scale, 12 / this.scale]); circle(ctx, 0, 0, source.workRadius, null, paused ? '#94a99e77' : '#94dbc688', 1.3 / this.scale); ctx.setLineDash([]);
+        ctx.setLineDash([8 / this.scale, 12 / this.scale]); circle(ctx, 0, 0, source.workRadius, null, paused ? '#94a99e77' : comms ? salvageColors.comms + '88' : '#94dbc688', 1.3 / this.scale); ctx.setLineDash([]);
         const progress = clamp(source.progress / source.duration, 0, 1);
-        ctx.beginPath(); ctx.arc(0, 0, 44, -Math.PI / 2, -Math.PI / 2 + TAU * progress); ctx.strokeStyle = '#c6ffdf'; ctx.lineWidth = 2 / this.scale; ctx.stroke();
+        ctx.beginPath(); ctx.arc(0, 0, 44, -Math.PI / 2, -Math.PI / 2 + TAU * progress); ctx.strokeStyle = comms ? '#dae2ff' : '#c6ffdf'; ctx.lineWidth = 2 / this.scale; ctx.stroke();
         for (let i = 0; i < 4; i++) {
           const a = i * Math.PI / 2, x = Math.cos(a) * (source.workRadius - 10), y = Math.sin(a) * (source.workRadius - 10);
-          path(ctx, [[x - Math.sin(a) * 6, y + Math.cos(a) * 6], [x + Math.sin(a) * 6, y - Math.cos(a) * 6]], false); ctx.strokeStyle = '#9edac2'; ctx.lineWidth = 1.5 / this.scale; ctx.stroke();
+          path(ctx, [[x - Math.sin(a) * 6, y + Math.cos(a) * 6], [x + Math.sin(a) * 6, y - Math.cos(a) * 6]], false); ctx.strokeStyle = comms ? salvageColors.comms : '#9edac2'; ctx.lineWidth = 1.5 / this.scale; ctx.stroke();
         }
         ctx.restore();
       }
@@ -1270,6 +1280,29 @@
           const text = boarding ? '入圈登舰 · ' + Math.round(state.evac.progress / state.evac.boardingDuration * 100) + '%' : active ? '接应 ' + Math.ceil(state.evac.remaining) + 's' : state.evac ? '接应已锁定另一处' : this.interactionLabel(exit, '呼叫接应') + (exit.arrivalDuration ? ' · ' + exit.arrivalDuration + 's' : '');
           this.drawEncounterLabel(text, exit.x, exit.y - exit.radius - 25 / this.scale, color, true);
         }
+      }
+    }
+
+    drawSalvageComms(comms, player) {
+      const ctx = this.ctx, muted = ['spent', 'expired'].includes(comms.status), color = muted ? '#75848a' : salvageColors.comms;
+      const paused = comms.status === 'linking' && Math.hypot(player.x - comms.x, player.y - comms.y) > comms.workRadius;
+      ctx.save(); ctx.translate(comms.x, comms.y);
+      circle(ctx, 0, 9, comms.radius + 4, '#15262c88'); box(ctx, -19, -9, 38, 25, 4, '#293745', color);
+      path(ctx, [[-10, -9], [0, -29], [10, -9], [0, -15], [0, -29]], false); ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.stroke();
+      if (paused) { ctx.fillStyle = '#dbdfef'; ctx.fillRect(-5, -2, 3, 10); ctx.fillRect(2, -2, 3, 10); }
+      else if (comms.status === 'spent') { path(ctx, [[-7, 1], [-1, 7], [9, -4]], false); ctx.strokeStyle = '#a8c5bb'; ctx.stroke(); }
+      else if (comms.status === 'expired') { path(ctx, [[-8, 8], [8, -4]], false); ctx.strokeStyle = color; ctx.stroke(); }
+      else {
+        circle(ctx, 0, -29, 3, color); circle(ctx, 0, 3, 3, color);
+        for (let index = 0; index < (comms.status === 'armed' ? 2 : comms.status === 'linking' ? 1 : 0); index++) {
+          ctx.beginPath(); ctx.arc(0, -29, 9 + index * 7, Math.PI * 1.15, Math.PI * 1.85); ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
+        }
+      }
+      if (comms.status === 'linking') { ctx.fillStyle = color; ctx.fillRect(-13, 11, 26 * clamp(comms.progress / comms.duration, 0, 1), 2); }
+      ctx.restore();
+      if (this.interaction?.target === comms && Math.hypot(player.x - comms.x, player.y - comms.y) <= 94) {
+        const status = comms.status === 'linking' ? '架设 ' + Math.round(comms.progress / comms.duration * 100) + '%' : comms.status === 'armed' ? '拦截待命' : comms.status === 'spent' ? '已拦截' : comms.status === 'expired' ? '增援已出动' : 'EMP 未就绪';
+        this.drawEncounterLabel(this.interactionLabel(comms, status), comms.x, comms.y - comms.radius - 26 / this.scale, color, true);
       }
     }
 
@@ -2929,6 +2962,20 @@
           labels.push({ id: cargo.id, x, y, color, name: cargo.name, status, priority: 1, texts: [cargo.name + ' · ' + status, cargo.name + ' · ' + (carried ? '携带' : status)] });
         }
       }
+      const comms = state.comms;
+      if (comms) {
+        const x = comms.x * scale, y = comms.y * scale, color = ['spent', 'expired'].includes(comms.status) ? '#75848a' : salvageColors.comms;
+        path(ctx, [[x - size, y + size], [x, y - size], [x + size, y + size], [x, y + size * .4], [x, y - size]], false); ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
+        circle(ctx, x, y - size, 1.5, color);
+        if (target?.id === comms.id) circle(ctx, x, y, size + 5, null, '#dae2ff', 1.5);
+        if (comms.status === 'linking') {
+          ctx.beginPath(); ctx.arc(x, y, size + 4, -Math.PI / 2, -Math.PI / 2 + TAU * clamp(comms.progress / comms.duration, 0, 1)); ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
+        }
+        if (detailed) {
+          const status = comms.status === 'idle' ? 'EMP/5s' : comms.status === 'linking' ? (Math.hypot(game.player.x - comms.x, game.player.y - comms.y) > comms.workRadius ? '暂停' : '') + Math.round(comms.progress / comms.duration * 100) + '%' : comms.status === 'armed' ? '待命' : comms.status === 'spent' ? '已拦截' : '已过期';
+          labels.push({ id: comms.id, x, y, color, name: '通讯', status, texts: ['通讯 · ' + status, '通讯'] });
+        }
+      }
       for (const exit of state.exits) {
         const x = exit.x * scale, y = exit.y * scale, active = state.evac?.exitId === exit.id, boarding = active && state.status === 'boarding', color = active ? '#d7ffeb' : '#8aacab';
         polygon(ctx, x, y, size + 2, 3, -Math.PI / 2); ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
@@ -2947,7 +2994,7 @@
         }
       }
       if (!detailed) return;
-      const world = game.world || this.world, placed = [], glyphs = [...state.sources, ...state.exits, ...(cargoPoint ? [cargoPoint] : []), ...(game.stations || []), game.player].map(point => ({ left: point.x * scale - size - 3, right: point.x * scale + size + 3, top: point.y * scale - size - 3, bottom: point.y * scale + size + 3 }));
+      const world = game.world || this.world, placed = [], glyphs = [...state.sources, ...state.exits, ...(cargoPoint ? [cargoPoint] : []), ...(comms ? [comms] : []), ...(game.stations || []), game.player].map(point => ({ left: point.x * scale - size - 3, right: point.x * scale + size + 3, top: point.y * scale - size - 3, bottom: point.y * scale + size + 3 }));
       bounds ||= { left: 0, right: world.width * scale, top: 0, bottom: world.height * scale };
       ctx.font = '600 10px "Microsoft YaHei", sans-serif'; ctx.textAlign = 'center';
       labels.sort((a, b) => (b.id === target?.id) - (a.id === target?.id) || (b.priority || 0) - (a.priority || 0));

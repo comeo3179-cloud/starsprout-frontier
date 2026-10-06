@@ -146,9 +146,9 @@
         this.lastPlayed[kind] = this.context.currentTime;
         switch (kind) {
           case 'salvage-start': this.note(196, 392, .28, .03, 'sine'); this.note(587, 784, .16, .02, 'sine', .11); break;
-          case 'salvage-source-start': this.note(130, 195, .22, .035, 'triangle'); this.note(390, 260, .16, .025, 'sine', .09); break;
+          case 'salvage-comms-start': case 'salvage-source-start': this.note(130, 195, .22, .035, 'triangle'); this.note(390, 260, .16, .025, 'sine', .09); break;
           case 'salvage-source-open': this.noiseBurst(weapon === 'drone' ? 2600 : 1300, .1, .045); this.note(weapon === 'drone' ? 620 : 260, 130, .15, .03, 'triangle'); break;
-          case 'salvage-vault-unlock': this.note(523, 784, .09, .025, 'sine'); this.note(1046, 1046, .17, .022, 'sine', .06); break;
+          case 'salvage-comms-ready': case 'salvage-comms-block': case 'salvage-vault-unlock': this.note(523, 784, .09, .025, 'sine'); this.note(1046, 1046, .17, .022, 'sine', .06); break;
           case 'salvage-collected': [392, 587, 784].forEach((f, i) => this.note(f, f, .20, .028, 'sine', i * .05)); break;
           case 'salvage-alert': {
             const level = Math.max(2, Math.min(4, Number(weapon) || 2)), frequency = 330 + (level - 2) * 110;
@@ -158,7 +158,7 @@
           case 'salvage-call': this.note(740, 740, .075, .025, 'sine'); this.note(494, 740, .16, .03, 'triangle', .16); break;
           case 'salvage-arrive': [494, 740, 988].forEach((f, i) => this.note(f, f, .24, .03, 'sine', i * .10)); break;
           case 'salvage-complete': [392, 523, 784, 1046].forEach((f, i) => this.note(f, f, .35, .035, 'sine', i * .11)); break;
-          case 'salvage-withdraw': this.note(392, 392, .2, .025, 'sine'); this.note(294, 294, .25, .02, 'sine', .11); break;
+          case 'salvage-comms-expired': case 'salvage-withdraw': this.note(392, 392, .2, .025, 'sine'); this.note(294, 294, .25, .02, 'sine', .11); break;
           case 'salvage-failed': this.note(196, 98, .3, .035, 'triangle'); this.note(147, 73.5, .25, .022, 'sine', .1); break;
           case 'field-arm': {
             const friendly = String(weapon).includes('friendly'), mine = String(weapon).includes('mine');
