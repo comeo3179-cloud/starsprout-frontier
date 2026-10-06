@@ -47,17 +47,25 @@ function verifyBundledEngine(jsName) {
     "const fs = require('node:fs');",
     "const bundle = fs.readFileSync(" + JSON.stringify(bundlePath) + ", 'utf8');",
     "const stopAtUi = new Error('UI boundary');",
-    'const exported = { exports: {} };',
+    'const exported = { exports: {} }, runtime = {};',
+    'const verificationDocument = { getElementById() { throw stopAtUi; } };',
     'let reachedUi = false;',
-    "try { new Function('window', 'module', 'document', bundle)({}, exported, { getElementById() { throw stopAtUi; } }); }",
+    "try { new Function('window', 'module', 'document', bundle)(runtime, exported, verificationDocument); }",
     'catch (error) { if (error !== stopAtUi) throw error; reachedUi = true; }',
     "if (!reachedUi || typeof exported.exports.Game !== 'function') throw new Error('Bundle did not expose its engine before the UI.');",
     'module.exports = exported.exports;',
+    'module.exports.BundledRenderer = runtime.ExpeditionRenderer;',
+    'module.exports.BundledDocument = verificationDocument;',
     ''
   ].join('\n'));
   const originalImport = "require('../action-engine.js')";
-  const testPaths = ['action-engine', 'projectile-collision', 'damage-source', 'frame-timing', 'interaction-targets', 'grenade-preview', 'secret-techniques', 'secret-depth', 'trials', 'encounters', 'evolutions', 'storm-sector', 'campaign', 'campaign-integration', 'campaign-awakenings', 'ruins-starline', '4.0-integration', 'voyage', 'voyage-integration', 'battlefield', 'salvage', 'salvage-risk', 'salvage-comms', 'salvage-lastchance', 'salvage-loadouts'].map(name => {
-    const tests = read('tests/' + name + '.test.js');
+  const testPaths = ['action-engine', 'projectile-collision', 'damage-source', 'frame-timing', 'interaction-targets', 'grenade-preview', 'secret-techniques', 'secret-depth', 'trials', 'encounters', 'evolutions', 'storm-sector', 'campaign', 'campaign-integration', 'campaign-awakenings', 'ruins-starline', '4.0-integration', 'voyage', 'voyage-integration', 'battlefield', 'salvage', 'salvage-risk', 'salvage-comms', 'salvage-lastchance', 'salvage-loadouts', 'siege', 'siege-renderer'].map(name => {
+    let tests = read('tests/' + name + '.test.js');
+    if (name === 'siege-renderer') {
+      const sourceRenderer = "vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'action-renderer.js'), 'utf8'), sandbox);";
+      if (!tests.includes(sourceRenderer)) throw new Error('Expected source renderer fixture.');
+      tests = tests.replace(sourceRenderer, "sandbox.window.ExpeditionRenderer = require('./bundled-engine.cjs').BundledRenderer;\nObject.defineProperty(sandbox, 'document', { set(value) { Object.assign(require('./bundled-engine.cjs').BundledDocument, value); } });");
+    }
     if (tests.split(originalImport).length !== 2) throw new Error('Expected one source engine import in ' + name);
     const testPath = path.join(verificationRoot, name + '.test.cjs');
     fs.writeFileSync(testPath, tests.replace(originalImport, "require('./bundled-engine.cjs')"));

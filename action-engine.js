@@ -175,6 +175,14 @@
     briefing: '样本带上舰才计奖金。E 回收或呼叫接应；舰到后在圈内累计 3 秒登舰，离圈暂停。空手也能返回。',
     boss: { name: '巡防守卫', subtitle: '无需击败首领，自主呼叫接应', color: '#9fe9d4' },
     threat: { name: '警戒扫描', description: '行动提高警戒；高警戒扫描锁定旧位置，移出预警圈。' } };
+  const SIEGE_DIFFICULTIES = [
+    { id: 'normal', title: '强袭', hp: 1, damage: 1 },
+    { id: 'overload', title: '超载', hp: 1.2, damage: 1.12 }
+  ];
+  const SIEGE_MAP = { id: 'siege', name: '巨械猎场', subtitle: '夺炮破甲', mode: 'siege', objectiveLabel: '巨械', color: '#ffd28b',
+    description: '拆下移动巨械的炮座，以它的火力反击。', briefing: '射击拆炮，EMP 接管残骸，瞄准后 E 开火。普通武器全程有效。',
+    boss: { name: '行城巨械', subtitle: '拆炮夺火力；两次重击破甲，低血量进入过载', color: '#ffc285' },
+    threat: { name: '巨械火控', description: '横移避开锁定射线；EMP 可将主炮重弹按准星改向。' } };
 
   class Game {
     constructor(options = {}) {
@@ -186,11 +194,12 @@
 
     reset(mapId = this.map ? this.map.id : 'frontier', options = {}, idBase = 1) {
       this.random = this.baseRandom;
-      this.mode = options.mode === 'salvage' ? 'salvage' : options.mode === 'voyage' ? 'voyage' : options.mode === 'campaign' ? 'campaign' : options.mode === 'trial' ? 'trial' : 'expedition';
+      this.mode = options.mode === 'siege' ? 'siege' : options.mode === 'salvage' ? 'salvage' : options.mode === 'voyage' ? 'voyage' : options.mode === 'campaign' ? 'campaign' : options.mode === 'trial' ? 'trial' : 'expedition';
       this.trial = null;
       this.campaign = null;
       this.voyage = null;
       this.salvage = null;
+      this.siege = null;
       this.battlefield = null;
       this.map = MAPS.find(map => map.id === mapId) || MAPS[0];
       this.nextId = idBase;
@@ -300,8 +309,251 @@
       if (this.mode === 'campaign') this._configureCampaign(options);
       if (this.mode === 'voyage') this._configureVoyage(options);
       if (this.mode === 'salvage') this._configureSalvage(options);
+      if (this.mode === 'siege') this._configureSiege(options);
       this._objective();
       return this;
+    }
+
+    _configureSiege(options) {
+      const seed = Number.isFinite(options.seed) ? Math.trunc(options.seed) >>> 0 : 1;
+      const difficulty = SIEGE_DIFFICULTIES.find(item => item.id === options.difficulty) || SIEGE_DIFFICULTIES[0];
+      let state = seed ^ 0x8F1BBCDC;
+      this.random = () => {
+        state = state + 0x6D2B79F5 | 0;
+        let value = Math.imul(state ^ state >>> 15, 1 | state);
+        value ^= value + Math.imul(value ^ value >>> 7, 61 | value);
+        return ((value ^ value >>> 14) >>> 0) / 4294967296;
+      };
+      this.map = SIEGE_MAP; this.world = { width: 2000, height: 1500 };
+      Object.assign(this.player, { x: 1000, y: 1320, angle: -Math.PI / 2 });
+      this.spawn = { x: this.player.x, y: this.player.y };
+      this.relays = []; this.stations = []; this.crates = []; this.contracts = []; this.encounters = [];
+      this.delivery = null; this.escort = null; this.battlefield = null; this.sectorThreat.active = false;
+      this.sectorThreat.name = this.map.threat.name; this.sectorThreat.description = this.map.threat.description;
+      const route = [{ x: 660, y: 450 }, { x: 1380, y: 450 }, { x: 1380, y: 1000 }, { x: 660, y: 1000 }];
+      const layout = [[250, 230], [570, 210], [1010, 190], [1550, 210], [1780, 320], [270, 660], [1730, 730],
+        [260, 1120], [530, 1260], [1490, 1250], [1740, 1160], [990, 690], [850, 780], [1150, 790]];
+      this.obstacles = layout.map(([x, y], index) => ({ id: this._id(), type: 'rock', radius: 32 + index % 3 * 5, variant: index % 3,
+        x: x + ((seed + index * 7) % 17 - 8), y: y + ((seed + index * 11) % 17 - 8) }))
+        .filter(rock => distance(rock, this.player) > rock.radius + 90 && !route.some((point, index) => {
+          const next = route[(index + 1) % route.length];
+          return this._segmentHit(point.x, point.y, next.x - point.x, next.y - point.y, rock, 164) !== null;
+        }));
+      this.terrainRevision = (this.terrainRevision || 0) + 1;
+      const loadout = SALVAGE_LOADOUTS.find(item => item.id === options.loadoutId) || SALVAGE_LOADOUTS[0];
+      this.player.weapon = loadout.weapon; this.tacticId = loadout.tacticId; this._syncWeapon();
+      this.siege = { seed, difficulty: difficulty.id, loadoutId: loadout.id, status: 'hunting', route, waypoint: 1, bossId: null, parts: [], wrecks: [],
+        armorHits: 0, aimTarget: null, selectedId: null, shotsFired: 0, captures: 0, reflections: 0, spawned: 0, spawnTimer: 8, quota: 12 };
+      const boss = this.spawnEnemy('boss', route[0]);
+      Object.assign(boss, { variant: 'siege', radius: 88, hp: 3600 * difficulty.hp, maxHp: 3600 * difficulty.hp,
+        speed: 46, damage: 17 * difficulty.damage, shielded: true, attackTimer: 3, ringGapAngle: 0, ringGapWidth: Math.PI / 4 });
+      this.siege.bossId = boss.id; this.bossSpawned = true;
+      for (const [index, kind] of ['cannon', 'lance', 'mortar'].entries()) {
+        const [offsetX, offsetY] = [[-116, 12], [116, 12], [0, -116]][index];
+        const part = this.spawnEnemy('reactor', { x: boss.x + offsetX, y: boss.y + offsetY });
+        Object.assign(part, { siegePart: kind, bossId: boss.id, offsetX, offsetY, radius: 26, hp: 400 * difficulty.hp,
+          maxHp: 400 * difficulty.hp, xp: 12, color: ['#ffc285', '#c6afff', '#ff986f'][index],
+          name: ['重弹主炮', '扫射光矛', '迫击炮座'][index], attackTimer: 3 + index * 1.5, windup: 0, shotAngle: 0 });
+        this.siege.parts.push(part);
+      }
+      this._emit('boss-spawn', boss);
+    }
+
+    siegeTarget() {
+      const siege = this.siege;
+      if (!siege || ['complete', 'failed'].includes(siege.status)) return null;
+      const available = siege.wrecks.filter(wreck => wreck.status === 'captured' && wreck.ammo > 0);
+      const nearby = available.filter(wreck => distance(this.player, wreck) <= 94);
+      const broken = siege.wrecks.filter(wreck => wreck.status === 'broken');
+      const targets = nearby.length ? nearby : available.length ? available : broken.length ? broken : siege.parts.filter(part => part.hp > 0);
+      const boss = this.enemies.find(enemy => enemy.id === siege.bossId && enemy.hp > 0);
+      const selected = [...siege.parts.filter(part => part.hp > 0), ...siege.wrecks.filter(wreck => wreck.status !== 'spent'), ...(boss ? [boss] : [])]
+        .find(target => target.id === siege.selectedId);
+      const target = selected || targets.sort((a, b) => distance(this.player, a) - distance(this.player, b))[0] || boss;
+      if (!target) return null;
+      const wreck = target.type === 'siege-wreck';
+      return { id: target.id, x: target.x, y: target.y, kind: wreck ? target.status === 'broken' ? 'capture' : 'turret' : target.siegePart ? 'part' : 'core',
+        label: wreck ? target.name : target.name || this.map.boss.name,
+        hint: wreck ? target.status === 'broken' ? 'Q · 接管残骸' : '瞄准后 E · 开火' : target.siegePart ? '射击拆下炮座' : '击败巨械核心',
+        progress: wreck ? target.ammo : target.maxHp - target.hp, total: wreck ? 3 : target.maxHp };
+    }
+
+    selectSiegeTarget(id) {
+      if (!this.siege || this.phase !== 'playing' || ![...this.siege.parts.filter(part => part.hp > 0),
+        ...this.siege.wrecks.filter(wreck => wreck.status !== 'spent'), ...this.enemies.filter(enemy => enemy.id === this.siege.bossId && enemy.hp > 0)].some(target => target.id === id)) return false;
+      this.siege.selectedId = id; this._objective(); return true;
+    }
+
+    _siegeInteraction() {
+      const wreck = this.siege.wrecks.filter(item => item.status !== 'spent' && distance(this.player, item) <= 94)
+        .sort((a, b) => distance(this.player, a) - distance(this.player, b))[0];
+      const ready = wreck?.status === 'captured' && wreck.ammo > 0 && wreck.cooldown === 0;
+      return { target: wreck || null, action: this.phase === 'playing' && ready ? '重炮开火' : '',
+        hint: !wreck ? '' : wreck.status === 'broken' ? 'Q · 接管炮座 / 3 发' : wreck.cooldown > 0 ? '重炮冷却 · ' + wreck.cooldown.toFixed(1) + 's' : 'E · 瞄准开火 / ' + wreck.ammo + ' 发' };
+    }
+
+    _interactSiege(wreck) {
+      if (this.phase !== 'playing' || !this.siege.wrecks.includes(wreck) || wreck.status !== 'captured' || wreck.ammo <= 0 || wreck.cooldown > 0 || distance(this.player, wreck) > 94) return false;
+      const aim = this.siege.aimTarget, angle = aim ? Math.atan2(aim.y - wreck.y, aim.x - wreck.x) : this.player.angle;
+      const lance = wreck.kind === 'lance', mortar = wreck.kind === 'mortar', speed = lance ? 1100 : mortar ? 540 : 700;
+      this.bullets.push({ id: this._id(), type: 'bullet', owner: 'player', kind: mortar ? 'grenade' : 'siege', siegeHeavy: true,
+        x: wreck.x + Math.cos(angle) * 36, y: wreck.y + Math.sin(angle) * 36, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+        radius: lance ? 6 : mortar ? 7 : 10, age: 0, lifetime: mortar ? 1.3 : 2.4, damage: (lance ? 360 : mortar ? 480 : 650) * this.player.damageMultiplier,
+        blastRadius: 150, pierce: lance ? 3 : 0, hitIds: [], color: lance ? '#d1bcff' : '#ffe0a6', critical: false });
+      wreck.ammo--; wreck.cooldown = 1.2; if (wreck.ammo === 0) wreck.status = 'spent';
+      this.siege.shotsFired++;
+      this._emit('siege-turret-shot', wreck, { wreckId: wreck.id, kind: wreck.kind, ammo: wreck.ammo, angle, color: '#ffe0a6' });
+      return true;
+    }
+
+    _siegePartKilled(part) {
+      const wreck = { id: this._id(), type: 'siege-wreck', kind: part.siegePart, name: part.name, x: part.x, y: part.y,
+        radius: 28, status: 'broken', ammo: 0, cooldown: 0 };
+      // The patrol corridor fits all three mounts and their wrecks, including their interaction circles.
+      this.siege.wrecks.push(wreck);
+      this.hazards = this.hazards.filter(hazard => hazard.sourceId !== part.id);
+      part.windup = 0;
+      this._emit('siege-part-break', wreck, { partId: part.id, wreckId: wreck.id, kind: wreck.kind, radius: 60, color: part.color });
+    }
+
+    _captureSiege(origin, radius) {
+      if (!this.siege || this.phase !== 'playing') return;
+      for (const wreck of this.siege.wrecks) {
+        if (wreck.status !== 'broken' || distance(origin, wreck) > radius ||
+          this.obstacles.some(rock => this._segmentHit(origin.x, origin.y, wreck.x - origin.x, wreck.y - origin.y, rock, 0) !== null)) continue;
+        wreck.status = 'captured'; wreck.ammo = 3; this.siege.captures++;
+        this._emit('siege-capture', wreck, { wreckId: wreck.id, kind: wreck.kind, ammo: 3, radius: 45, color: '#9fe9d4' });
+      }
+    }
+
+    _redirectSiegeShells(origin, radius) {
+      if (!this.siege) return;
+      for (const bullet of this.bullets) {
+        if (bullet.owner !== 'enemy' || !bullet.siegeHeavy || bullet.lifetime <= 0 || distance(origin, bullet) > radius ||
+          this.obstacles.some(rock => this._segmentHit(origin.x, origin.y, bullet.x - origin.x, bullet.y - origin.y, rock, 0) !== null)) continue;
+        const aim = this.siege.aimTarget, angle = aim ? Math.atan2(aim.y - bullet.y, aim.x - bullet.x) : this.player.angle;
+        Object.assign(bullet, { owner: 'player', vx: Math.cos(angle) * 700, vy: Math.sin(angle) * 700,
+          damage: 500 * this.player.damageMultiplier, lifetime: 2.4, pierce: 2, hitIds: [], color: '#a4ffed', critical: false });
+        this.siege.reflections++;
+        this._emit('siege-redirect', bullet, { bulletId: bullet.id, angle, radius: 30, color: '#a4ffed' });
+      }
+    }
+
+    _siegeHeavyHit(enemy, bullet) {
+      if (!this.siege || !bullet.siegeHeavy || !enemy.shielded || enemy.id !== this.siege.bossId) return;
+      this.siege.armorHits = Math.min(2, this.siege.armorHits + 1);
+      if (this.siege.armorHits === 2) this._breakSiegeArmor(enemy);
+    }
+
+    _breakSiegeArmor(boss) {
+      if (!boss.shielded) return;
+      boss.shielded = false; boss.stage = 2; this.siege.status = 'core';
+      boss.windup = 0; boss.attackKind = ''; boss.attackName = ''; boss.attackHint = ''; boss.recoveryTimer = 3; boss.attackTimer = 3;
+      const sourceIds = [boss.id, ...this.siege.parts.map(part => part.id)];
+      this.hazards = this.hazards.filter(hazard => !sourceIds.includes(hazard.sourceId));
+      for (const part of this.siege.parts) part.windup = 0;
+      this._emit('siege-armor-break', boss, { armorHits: this.siege.armorHits, stage: 2, radius: 150, color: '#ffd28b' });
+      this._emit('boss-phase', boss, { stage: 2 });
+    }
+
+    _checkSiegePhase(boss) {
+      if (boss.hp <= 0) return;
+      if (boss.shielded && boss.hp <= boss.maxHp * .6) this._breakSiegeArmor(boss);
+      if (boss.stage < 3 && boss.hp <= boss.maxHp * .25) {
+        boss.stage = 3; this.siege.status = 'overload'; boss.windup = 0; boss.attackKind = ''; boss.attackName = ''; boss.attackHint = '';
+        boss.attackTimer = 3; boss.recoveryTimer = 3;
+        this.hazards = this.hazards.filter(hazard => hazard.sourceId !== boss.id);
+        this._emit('siege-overload', boss, { stage: 3, radius: 120, color: '#ff8f8b' });
+        this._emit('boss-phase', boss, { stage: 3 });
+      }
+    }
+
+    _updateSiege(dt) {
+      const siege = this.siege, boss = this.enemies.find(enemy => enemy.id === siege.bossId && enemy.hp > 0);
+      if (!boss || this.phase !== 'playing') return;
+      const difficulty = SIEGE_DIFFICULTIES.find(item => item.id === siege.difficulty);
+      for (const wreck of siege.wrecks) {
+        wreck.cooldown = Math.max(0, wreck.cooldown - dt); if (wreck.cooldown < 1e-9) wreck.cooldown = 0;
+      }
+      this.pressurePhase = 'hunting'; siege.spawnTimer = Math.max(0, siege.spawnTimer - dt);
+      if (siege.spawned < siege.quota && siege.spawnTimer === 0 && this.enemies.filter(enemy => enemy.hp > 0 && !enemy.siegePart && enemy.type !== 'boss').length < 6) {
+        const points = [{ x: 220, y: 780 }, { x: 1780, y: 780 }, { x: 1000, y: 220 }, { x: 1000, y: 1240 }];
+        const point = points.map((_, index) => points[(siege.spawned + index) % points.length]).find(candidate =>
+          distance(candidate, this.player) > 220 && !this.obstacles.some(rock => distance(candidate, rock) <= rock.radius + 26));
+        if (point) {
+          const enemy = this.spawnEnemy(['crawler', 'spitter', 'charger', 'crawler'][siege.spawned % 4], point);
+          if (enemy) { siege.spawned++; siege.spawnTimer = 9; }
+        } else siege.spawnTimer = 1;
+      }
+      for (const part of siege.parts) {
+        if (part.hp <= 0 || boss.stage !== 1) continue;
+        part.hitFlash = Math.max(0, (part.hitFlash || 0) - dt);
+        if (part.stunTimer > 0) { part.stunTimer = Math.max(0, part.stunTimer - dt); continue; }
+        part.attackTimer -= dt;
+        if (part.windup > 0) {
+          part.windup = Math.max(0, part.windup - dt);
+          if (part.windup === 0 && part.siegePart === 'cannon') {
+            this._enemyBullet(part, part.shotAngle, 240, 26 * difficulty.damage);
+            Object.assign(this.bullets[this.bullets.length - 1], { kind: 'siege', siegeHeavy: true, age: 0, radius: 10, lifetime: 5.5 });
+          }
+          continue;
+        }
+        if (part.attackTimer > 0) continue;
+        const angle = Math.atan2(this.player.y - part.y, this.player.x - part.x);
+        part.shotAngle = angle; part.angle = angle;
+        const extra = { sourceId: part.id, enemyType: 'boss', owner: 'enemy', siegeHazard: true, color: part.color,
+          name: part.name, hint: part.siegePart === 'cannon' ? '侧移避开重弹，或用 EMP 改向' : '位置已锁定，移出预警' };
+        if (part.siegePart === 'cannon') {
+          part.windup = 1.2; part.attackTimer = 5.5;
+          this._addHazard('charge', part.x, part.y, 18, 1.2, 0, { ...extra, angle, length: 700, visualOnly: true });
+        } else if (part.siegePart === 'lance') {
+          part.windup = 1.4; part.attackTimer = 7;
+          this._addHazard('lane', part.x, part.y, 22, 1.4, 22 * difficulty.damage, { ...extra, angle, length: 720 });
+        } else {
+          part.windup = 1.3; part.attackTimer = 6.5;
+          this._addHazard('blast', this.player.x, this.player.y, 85, 1.3, 18 * difficulty.damage, extra);
+        }
+      }
+    }
+
+    _updateSiegeBoss(boss, dt) {
+      const siege = this.siege, point = siege.route[siege.waypoint], gap = distance(boss, point);
+      const step = Math.min(gap, (boss.stage === 1 ? 46 : boss.stage === 2 ? 58 : 66) * dt);
+      if (gap > 0) { boss.x += (point.x - boss.x) / gap * step; boss.y += (point.y - boss.y) / gap * step; }
+      if (gap <= step + 1e-9) siege.waypoint = (siege.waypoint + 1) % siege.route.length;
+      for (const part of siege.parts) if (part.hp > 0) { part.x = boss.x + part.offsetX; part.y = boss.y + part.offsetY; }
+      if (boss.stage === 1) return;
+      if (boss.windup > 0) {
+        boss.windup = Math.max(0, boss.windup - dt);
+        if (boss.windup === 0) {
+          if (boss.attackKind === 'siege-ring') {
+            const count = boss.stage === 3 ? 18 : 14, difficulty = SIEGE_DIFFICULTIES.find(item => item.id === siege.difficulty);
+            for (let index = 0; index < count; index++) {
+              const angle = TAU * index / count, delta = Math.atan2(Math.sin(angle - boss.ringGapAngle), Math.cos(angle - boss.ringGapAngle));
+              if (Math.abs(delta) < boss.ringGapWidth / 2) continue;
+              this._enemyBullet(boss, angle, boss.stage === 3 ? 215 : 185, 13 * difficulty.damage);
+            }
+            this._emit('boss-ring', boss, { radius: 100 });
+          }
+          boss.recoveryTimer = 3; boss.attackTimer = 3; boss.attackKind = ''; boss.attackName = ''; boss.attackHint = '';
+        }
+        return;
+      }
+      if (boss.attackTimer > 0) return;
+      const difficulty = SIEGE_DIFFICULTIES.find(item => item.id === siege.difficulty);
+      boss.attackCount++; boss.attackTimer = 5;
+      if (boss.attackCount % 2 === 1) {
+        boss.attackKind = 'siege-ring'; boss.windup = 1.25;
+        boss.ringGapAngle = Math.atan2(this.player.y - boss.y, this.player.x - boss.x);
+        boss.attackName = '断环齐射'; boss.attackHint = '穿过金色缺口，或冲刺越过弹环';
+        this._addHazard('blast', boss.x, boss.y, 100, 1.25, 0, { sourceId: boss.id, visualOnly: true, siegeHazard: true, color: boss.color });
+      } else {
+        boss.attackKind = 'siege-collapse'; boss.windup = 1.4;
+        boss.attackName = '过载落点'; boss.attackHint = '旧位置已锁定，移出爆圈';
+        this._addHazard('blast', this.player.x, this.player.y, boss.stage === 3 ? 100 : 85, 1.4, 20 * difficulty.damage,
+          { sourceId: boss.id, enemyType: 'boss', owner: 'enemy', siegeHazard: true, color: boss.color, name: boss.attackName, hint: boss.attackHint });
+      }
+      this._emit('boss-attack', boss, { name: boss.attackName, hint: boss.attackHint, color: boss.color });
     }
 
     _configureSalvage(options) {
@@ -916,6 +1168,7 @@
     }
 
     _fieldDamage(enemy, bullet) {
+      this._siegeHeavyHit(enemy, bullet);
       if (enemy.type !== 'bulwark' || enemy.shieldOpenTimer > 0) return bullet.damage;
       const length = vectorLength(bullet.vx, bullet.vy);
       if (!length || (-bullet.vx * Math.cos(enemy.shieldAngle) - bullet.vy * Math.sin(enemy.shieldAngle)) / length < .5 - 1e-9) return bullet.damage;
@@ -1683,6 +1936,7 @@
       this.phase = 'playing';
       this._emit('start', this.player);
       if (this.salvage) this._emit('salvage-start', this.player, { seed: this.salvage.seed, color: this.map.color });
+      if (this.siege) this._emit('siege-start', this.player, { seed: this.siege.seed, color: this.map.color });
       return true;
     }
 
@@ -1804,6 +2058,12 @@
     }
 
     _objective() {
+      if (this.siege) {
+        const boss = this.enemies.find(enemy => enemy.id === this.siege.bossId), target = this.siegeTarget();
+        this.currentObjective = this.siege.status === 'complete' ? '巨械击破' : this.siege.status === 'failed' ? '强袭失败' :
+          (boss?.stage === 3 ? '过载终局' : boss?.shielded ? '拆炮 · 夺火力' : '核心暴露') + (target ? ' · ' + target.label : '');
+        return;
+      }
       if (this.salvage) {
         const salvage = this.salvage, level = ['I', 'II', 'III', 'IV'][salvage.alertLevel - 1];
         const drill = salvage.sources.find(source => source.status === 'drilling' && distance(this.player, source) <= source.workRadius);
@@ -1893,6 +2153,7 @@
       if (Number.isFinite(input.aimX) && Number.isFinite(input.aimY)) {
         player.angle = Math.atan2(input.aimY - player.y, input.aimX - player.x);
         if (this.voyage) this.voyage.aimTarget = { x: input.aimX, y: input.aimY };
+        if (this.siege) this.siege.aimTarget = { x: input.aimX, y: input.aimY };
       }
       let mx = clamp(Number(input.moveX) || 0, -1, 1);
       let my = clamp(Number(input.moveY) || 0, -1, 1);
@@ -1930,11 +2191,11 @@
       this._updateAwakenings(dt);
       if (this.phase !== 'playing') return;
       if (input.shoot) this._shoot();
-      if (!this.trial && !this.voyage && !this.salvage) this._updateContracts(dt);
+      if (!this.trial && !this.voyage && !this.salvage && !this.siege) this._updateContracts(dt);
       this._updateEncounters(dt, moveStart);
       this._updateEchoes(dt);
       if (this.phase !== 'playing') return;
-      if (!this.trial && !this.voyage && !this.salvage) this._updateRelays(dt);
+      if (!this.trial && !this.voyage && !this.salvage && !this.siege) this._updateRelays(dt);
       this._spawnDirector(dt);
       this._updateEnemies(dt);
       if (this.phase !== 'playing') return;
@@ -1942,7 +2203,7 @@
       if (this.phase !== 'playing') return;
       this._updateStarline();
       if (this.phase !== 'playing') return;
-      if (!this.trial && !this.voyage && !this.salvage) this._updateSectorThreat(dt);
+      if (!this.trial && !this.voyage && !this.salvage && !this.siege) this._updateSectorThreat(dt);
       this._updateHazards(dt);
       if (this.phase !== 'playing') return;
       this._updateBattlefield(dt);
@@ -2413,6 +2674,7 @@
         this._emit('awakening-trigger', player, { awakeningId: 'mobile-field', stage: 'field', radius: 100, color: '#c9b3ff', message: '随行电场展开' });
       }
       this._emit('pulse', origin, { radius, remote: origin.remote });
+      this._redirectSiegeShells(origin, radius);
       const cleared = this.bullets.filter(bullet => bullet.owner === 'enemy' && bullet.lifetime > 0 && distance(origin, bullet) <= radius);
       const grenades = this.bullets.filter(bullet => bullet.owner === 'player' && bullet.kind === 'grenade' && bullet.lifetime > 0 && !bullet.exploded && distance(origin, bullet) <= radius);
       this.bullets = this.bullets.filter(bullet => bullet.owner !== 'enemy' || distance(origin, bullet) > radius);
@@ -2448,6 +2710,7 @@
         this._damageEnemy(enemy, damage);
       }
       if (this.phase === 'playing') this._captureBattlefield(origin, radius);
+      if (this.phase === 'playing') this._captureSiege(origin, radius);
       if (this.phase === 'playing') this._unlockSalvageVaults(origin);
       if (this.phase === 'playing' && this.relics.includes('echo-pulse')) this.echoBursts.push({ x: origin.x, y: origin.y, radius, damage: damage * .65, remaining: .65 });
       if (this.phase === 'playing') this._voyagePulse(origin);
@@ -2545,6 +2808,7 @@
     }
 
     interactionState() {
+      if (this.siege) return this._siegeInteraction();
       const salvageState = this.salvage ? this._salvageInteraction() : null;
       const cargoState = this._salvageCargoInteraction();
       const commsState = this._salvageCommsInteraction();
@@ -2635,6 +2899,7 @@
       if (this.phase !== 'playing') return false;
       const { target, action } = this.interactionState();
       if (!action) return false;
+      if (this.siege && target.type === 'siege-wreck') return this._interactSiege(target);
       if (this.salvage && ['salvage-source', 'salvage-exit', 'salvage-cargo', 'salvage-comms', 'salvage-lastchance'].includes(target.type)) return this._interactSalvage(target);
       if (target.type === 'voyage-exit') return this._finishVoyageRoom();
       if (target.type === 'cargo') {
@@ -2798,6 +3063,7 @@
     }
 
     _spawnDirector(dt) {
+      if (this.siege) { this._updateSiege(dt); return; }
       if (this.salvage) { this._updateSalvage(dt); return; }
       if (this.voyage) { this._updateVoyage(dt); return; }
       if (this.trial) { this._updateTrial(dt); return; }
@@ -2852,13 +3118,14 @@
       }
       const voyageDifficulty = this.voyage && VOYAGE_DIFFICULTIES.find(item => item.id === this.voyage.difficulty);
       const salvageDifficulty = this.salvage && SALVAGE_DIFFICULTIES.find(item => item.id === this.salvage.difficulty);
-      const scale = type === 'boss' || type === 'anchor' ? 1 : this.salvage ? salvageDifficulty.hp : this.voyage ?
+      const siegeDifficulty = this.siege && SIEGE_DIFFICULTIES.find(item => item.id === this.siege.difficulty);
+      const scale = type === 'boss' || type === 'anchor' ? 1 : this.siege ? siegeDifficulty.hp : this.salvage ? salvageDifficulty.hp : this.voyage ?
         (1 + (this.voyage.node - 1) * .08) * (ordinary ? voyageDifficulty.hp * (this.voyage.room.risk === 'surge' ? 1.15 : 1) : 1) :
         (1 + this.completedRelays * 0.2 + Math.min(0.8, elapsed / 900)) * (ordinary && this.campaign?.crisisId === 'armored' ? 1.2 : 1);
       const enemy = {
         id: this._id(), type, x: point.x, y: point.y, radius: data.radius,
         hp: Math.round(data.hp * scale), maxHp: Math.round(data.hp * scale),
-        speed: data.speed * (ordinary && this.campaign?.crisisId === 'pursuit' ? 1.14 : 1), damage: data.damage * (voyageDifficulty ? voyageDifficulty.damage : salvageDifficulty ? salvageDifficulty.damage : 1), xp: data.xp, angle: 0,
+        speed: data.speed * (ordinary && this.campaign?.crisisId === 'pursuit' ? 1.14 : 1), damage: data.damage * (voyageDifficulty ? voyageDifficulty.damage : salvageDifficulty ? salvageDifficulty.damage : siegeDifficulty ? siegeDifficulty.damage : 1), xp: data.xp, angle: 0,
         attackTimer: 1 + this.random(), contactTimer: 0, stunTimer: 0,
         windup: 0, chargeTimer: 0, chargeX: 0, chargeY: 0, stage: 1, attackCount: 0,
         recoveryTimer: 0, knockbackTimer: 0, knockbackX: 0, knockbackY: 0, attackKind: '', phaseMarkTimer: 0
@@ -3095,6 +3362,7 @@
 
     _updateBoss(boss, dt, nx, ny, length) {
       const variant = boss.variant || this.map.id;
+      if (variant === 'siege') { this._updateSiegeBoss(boss, dt); return; }
       if (variant === 'voyage') { this._updateVoyageBoss(boss, dt, nx, ny, length); return; }
       if (variant === 'nexus') { this._updateNexusBoss(boss, dt, nx, ny, length); return; }
       if (boss.stage === 1 && boss.hp <= boss.maxHp * 0.5) {
@@ -3678,7 +3946,7 @@
 
     _burstGrenade(bullet) {
       if (bullet.exploded || this.phase !== 'playing') return;
-      const blockers = this.salvage ? [...this.obstacles] : [];
+      const blockers = this.salvage || this.siege ? [...this.obstacles] : [];
       bullet.exploded = true;
       bullet.lifetime = 0;
       this._emit('grenade-burst', bullet, { radius: bullet.blastRadius, color: bullet.color });
@@ -3698,7 +3966,9 @@
       }
       for (const enemy of this.enemies) {
         if (this.phase !== 'playing') break;
-        if (enemy.hp > 0 && distance(bullet, enemy) <= bullet.blastRadius + enemy.radius) {
+        if (enemy.hp > 0 && distance(bullet, enemy) <= bullet.blastRadius + enemy.radius &&
+            (!this.siege || !blockers.some(rock => this._segmentHit(bullet.x, bullet.y, enemy.x - bullet.x, enemy.y - bullet.y, rock, 0) !== null))) {
+          this._siegeHeavyHit(enemy, bullet);
           this._interruptAwakening(bullet, enemy);
           this._damageEnemy(enemy, bullet.damage, bullet.critical);
         }
@@ -3750,6 +4020,7 @@
 
     _damageEnemy(enemy, amount, critical = false) {
       if (this.phase !== 'playing' || enemy.hp <= 0) return;
+      if (this.siege && enemy.id === this.siege.bossId && enemy.shielded) amount *= .45;
       const weakpoint = enemy.recoveryTimer > 0 && (enemy.type === 'tank' || enemy.type === 'boss') || enemy.type === 'breacher' && enemy.stunTimer > 0;
       if (enemy.type === 'boss' && enemy.variant === 'nexus' && enemy.shielded) amount *= .35;
       if (enemy.type === 'tank') amount *= weakpoint ? 1.5 : 0.8;
@@ -3758,7 +4029,9 @@
       enemy.hp -= amount;
       enemy.hitFlash = 0.08;
       this._emit('hit', enemy, { enemyId: enemy.id, targetId: enemy.id, amount: Math.round(amount), critical, weakpoint, color: critical ? '#ffe098' : weakpoint ? '#8cdcff' : '#dcfff7' });
+      if (this.siege && enemy.id === this.siege.bossId) this._checkSiegePhase(enemy);
       if (enemy.hp > 0) return;
+      if (this.siege && enemy.siegePart) this._siegePartKilled(enemy);
       if (this.voyage) this._voyageKill(enemy);
       this.kills += 1;
       this._chargeReactor(8);
@@ -3796,6 +4069,12 @@
         return;
       }
       if (enemy.type === 'boss' && !this.salvage) {
+        if (this.siege) {
+          this.siege.status = 'complete'; this.siege.selectedId = null;
+          for (const part of this.siege.parts) part.hp = 0;
+          this.enemies = []; this.bullets = []; this.echoBursts = [];
+          this._emit('siege-complete', enemy, { seed: this.siege.seed, captures: this.siege.captures, shotsFired: this.siege.shotsFired, reflections: this.siege.reflections });
+        }
         if (this.voyage) { this._finishVoyageRoom(true); return; }
         if (this.campaign) { this._finishCampaignStage(enemy); return; }
         this.phase = 'won';
@@ -3833,6 +4112,11 @@
       this._emit('damage', player, { amount: Math.round(damage) });
       if (player.hp <= 0) {
         this.phase = 'lost';
+        if (this.siege) {
+          this.siege.status = 'failed'; this.siege.selectedId = null;
+          this.bullets = []; this.echoBursts = []; this.player.dashTimer = 0; this.reactor.timer = 0;
+          this._emit('siege-failed', player, { seed: this.siege.seed });
+        }
         if (this.salvage) {
           this.salvage.status = 'failed'; this.salvage.lostSamples = this.salvage.carried; this.salvage.carried = 0; this.salvage.pending = [];
           if (this.salvage.hotCargo.status === 'carried') { this.salvage.hotCargo.status = 'lost'; this.salvage.hotCargo.x = player.x; this.salvage.hotCargo.y = player.y; }
@@ -3948,5 +4232,5 @@
   }
 
   return { Game, WEAPONS, UPGRADES, EVOLUTIONS, ENEMIES, RELICS, TACTICS, MAPS, SECRETS, TRIAL_WAVES, CAMPAIGN_DOCTRINES, CAMPAIGN_AWAKENINGS, CAMPAIGN_CRISES, CAMPAIGN_SUPPLIES, CAMPAIGN_NEXUS,
-    VOYAGE_DEVICES, VOYAGE_RESONANCES, VOYAGE_DIFFICULTIES, VOYAGE_ROOMS, VOYAGE_BIOMES, BATTLEFIELD_GUIDE, SALVAGE_DIFFICULTIES, SALVAGE_LOADOUTS, SALVAGE_MAP };
+    VOYAGE_DEVICES, VOYAGE_RESONANCES, VOYAGE_DIFFICULTIES, VOYAGE_ROOMS, VOYAGE_BIOMES, BATTLEFIELD_GUIDE, SALVAGE_DIFFICULTIES, SALVAGE_LOADOUTS, SALVAGE_MAP, SIEGE_DIFFICULTIES, SIEGE_MAP };
 });

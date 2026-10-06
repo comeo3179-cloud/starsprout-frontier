@@ -185,8 +185,8 @@
       else if (event.type === 'relay-start') { trackedEncounterId = null; trackedRelayId = game.relays.find(relay => relay.status === 'charging')?.id ?? trackedRelayId; banner('MISSION / ENGAGED', game.map.mode === 'demolition' ? '反应堆暴露 · 集火拆毁' : game.map.mode === 'escort' ? '运输车启动 · 随车推进' : game.map.mode === 'conduction' ? '塔内引雷 · 锁定后撤离' : '坚守信标光圈'); $('run-log').textContent = game.map.briefing; }
       else if (event.type === 'relay-wave') { banner('DEFENSE / ' + event.wave + ' OF 3', event.waveName); }
       else if (event.type === 'relay-complete') { banner('MISSION COMPLETE · ' + event.completed + ' / 3', game.map.objectiveLabel + '完成'); notify(event.name + '完成：生命恢复、芯片与经验奖励已到达。'); tone('upgrade'); }
-      else if (event.type === 'boss-spawn') { banner('WARNING / SECTOR BOSS', game.map.boss.name + '正在接近'); notify(game.map.boss.subtitle); }
-      else if (event.type === 'boss-phase') { banner('PHASE 02 / OVERLOAD', game.map.boss.name + ' · 二阶段'); tone('pulse'); }
+      else if (event.type === 'boss-spawn') { banner('WARNING / SECTOR BOSS', game.map.boss.name + '正在接近'); if (!game.siege) notify(game.map.boss.subtitle); }
+      else if (event.type === 'boss-phase') { banner('PHASE 0' + (event.stage || 2), game.map.boss.name + ' · ' + (game.siege ? event.stage === 3 ? '过载反扑' : '核心裸露' : '二阶段')); tone('pulse'); }
       else if (event.type === 'conduction-charge') { tone('conduction-charge', event.charges); if (event.charges < event.chargeGoal) notify('导雷 ' + event.charges + '/' + event.chargeGoal + ' · 返回塔圈，准备下一次'); }
       else if (event.type === 'conduction-miss') { tone('reload-miss'); notify(event.message); }
       else if (event.type === 'boss-backlash') { tone('boss-backlash'); banner('STORM / REVERSED', '引雷反噬 · 弱点暴露', 1000); $('run-log').textContent = event.message; }
@@ -207,6 +207,13 @@
       else if (event.type === 'voyage-objective') { tone('voyage-objective'); notify('目标完成 · 前往出口交互'); }
       else if (event.type === 'voyage-device' || event.type === 'voyage-device-trigger') tone('voyage-device', event.deviceId);
       else if (event.type === 'voyage-resonance') tone('voyage-resonance', event.resonanceId);
+      else if (event.type.startsWith('siege-')) {
+        tone(event.type, event.kind);
+        if (event.type === 'siege-part-break') $('run-log').textContent = '炮座落地 · EMP 接管';
+        else if (event.type === 'siege-capture') $('run-log').textContent = '夺炮成功 · 瞄准后交互开火 ×3';
+        else if (event.type === 'siege-redirect') $('run-log').textContent = '重弹反向 · 沿准星反击';
+        else if (event.type === 'siege-armor-break') { banner('SIEGE / ARMOR BREAK', '装甲碎裂 · 核心裸露', 1000); $('run-log').textContent = '重炮反击奏效 · 全力攻击核心'; }
+      }
       else if (event.type.startsWith('salvage-')) {
         tone(event.type, event.type === 'salvage-alert' ? event.level : event.kind);
         if (event.type === 'salvage-alert') banner('SALVAGE / ALERT ' + event.level, '警戒 ' + ['I', 'II', 'III', 'IV'][event.level - 1] + (event.blocked ? ' · 增援已截断' : ' · 新巡防已接近'), 1200);
@@ -312,7 +319,7 @@
     $('screen-overlay').classList.toggle('evolution-screen', type === 'evolution-guide');
     $('screen-overlay').classList.toggle('account-screen', type === 'account');
     $('screen-overlay').classList.toggle('battlefield-screen', type === 'battlefield');
-    $('screen-overlay').classList.toggle('salvage-screen', type === 'salvage-intro');
+    $('screen-overlay').classList.toggle('salvage-screen', ['salvage-intro', 'siege-intro'].includes(type));
     stage.classList.toggle('account-open', type === 'account');
     $('screen-content').innerHTML = content; $('aim-reticle').style.opacity = '0';
     $('screen-content').scrollTop = 0; $('screen-overlay').scrollTop = 0;
@@ -347,7 +354,7 @@
     renderer.resize(); renderDirty = hudDirty = pointer.dirty = true;
   }
   function welcome() {
-    showScreen('welcome', '<div class="screen-kicker">STARSPROUT / 荒原行动 · 7.5.0</div><h1 id="screen-title">多拿一份，<em>还是现在带回家？</em></h1><p class="screen-description">探索、构筑、回收。选择你的下一站。</p><div class="sector-grid">' + Expedition.MAPS.map((map, index) => '<button class="sector-card ' + (map.id === game.map.id ? 'selected' : '') + '" data-map="' + map.id + '" aria-pressed="' + (map.id === game.map.id) + '" style="--sector-color:' + map.color + '"><small>SECTOR 0' + (index + 1) + (map.id === 'ruins' ? ' / NEW · 归星行动' : ' / 单区行动') + '</small><span class="sector-symbol">' + ['✳', '▧', '❄', 'ϟ', '◇'][index] + '</span><b>' + map.name + '</b><span>' + map.subtitle + '</span><p>' + map.description + '</p></button>').join('') + '</div><div class="sector-brief"><b>本图目标</b><p>' + game.map.description + '</p></div><button class="launch-button" id="start-run">进入' + game.map.name + ' <b>↗</b></button><details class="peek-details" id="sector-help"><summary>ⓘ 地图说明</summary><p>' + game.map.briefing + '</p><p><b>' + game.map.threat.name + '</b> · ' + game.map.threat.description + '</p><p>首领 · ' + game.map.boss.name + '</p></details><div class="welcome-controls"><span><kbd>W A S D</kbd>移动探索</span><span><kbd>1 — 6</kbd>切换武器</span><span><kbd>SHIFT / 空格</kbd>相位冲刺</span><span><kbd>F</kbd>星核暴走</span></div>');
+    showScreen('welcome', '<div class="screen-kicker">STARSPROUT / 荒原行动 · 8.0.0</div><h1 id="screen-title">选择战场，<em>把威胁变成武器。</em></h1><p class="screen-description">探索、构筑、回收。选择你的下一站。</p><div class="sector-grid">' + Expedition.MAPS.map((map, index) => '<button class="sector-card ' + (map.id === game.map.id ? 'selected' : '') + '" data-map="' + map.id + '" aria-pressed="' + (map.id === game.map.id) + '" style="--sector-color:' + map.color + '"><small>SECTOR 0' + (index + 1) + (map.id === 'ruins' ? ' / NEW · 归星行动' : ' / 单区行动') + '</small><span class="sector-symbol">' + ['✳', '▧', '❄', 'ϟ', '◇'][index] + '</span><b>' + map.name + '</b><span>' + map.subtitle + '</span><p>' + map.description + '</p></button>').join('') + '</div><div class="sector-brief"><b>本图目标</b><p>' + game.map.description + '</p></div><button class="launch-button" id="start-run">进入' + game.map.name + ' <b>↗</b></button><details class="peek-details" id="sector-help"><summary>ⓘ 地图说明</summary><p>' + game.map.briefing + '</p><p><b>' + game.map.threat.name + '</b> · ' + game.map.threat.description + '</p><p>首领 · ' + game.map.boss.name + '</p></details><div class="welcome-controls"><span><kbd>W A S D</kbd>移动探索</span><span><kbd>1 — 6</kbd>切换武器</span><span><kbd>SHIFT / 空格</kbd>相位冲刺</span><span><kbd>F</kbd>星核暴走</span></div>');
     $('start-run').addEventListener('click', startRun);
     $('screen-content').querySelectorAll('[data-map]').forEach(button => button.addEventListener('click', () => {
       resetRun(button.dataset.map); welcome(); tone('click');
@@ -377,6 +384,9 @@
     const salvageEntry = document.createElement('button'); salvageEntry.id = 'salvage-entry'; salvageEntry.className = 'campaign-entry salvage-entry';
     salvageEntry.innerHTML = '<span class="campaign-entry-mark" aria-hidden="true">◇</span><span><small>7.5 / 回收流派</small><b>危险回收</b><em>收集 · 撤离</em></span><strong>进入 ↗</strong>';
     modes.prepend(salvageEntry); salvageEntry.addEventListener('click', () => showSalvageIntro());
+    const siegeEntry = document.createElement('button'); siegeEntry.id = 'siege-entry'; siegeEntry.className = 'campaign-entry siege-entry';
+    siegeEntry.innerHTML = '<span class="campaign-entry-mark" aria-hidden="true">⬡</span><span><small>8.0 / 巨械猎场</small><b>巨械猎场</b><em>拆炮 · 夺枪 · 反击</em></span><strong>挑战 ↗</strong>';
+    modes.prepend(siegeEntry); siegeEntry.addEventListener('click', () => showSiegeIntro());
     const tools = document.createElement('div'); tools.className = 'camp-tools';
     const fieldEntry = document.createElement('button'); fieldEntry.id = 'open-battlefield'; fieldEntry.className = 'secondary-button';
     fieldEntry.textContent = '破阵战场资料'; fieldEntry.addEventListener('click', () => showBattlefieldGuide(welcome));
@@ -408,6 +418,41 @@
   }
   function startSalvage(difficulty = 'normal', seed = Math.floor(Math.random() * 4294967296), loadoutId = 'free') {
     resetRun('frontier', null, { mode: 'salvage', difficulty, seed, loadoutId }); startRun();
+  }
+  const siegePartNames = { cannon: '重弹主炮', lance: '扫射光矛', mortar: '迫击炮座' };
+  function siegeRules() {
+    return '<details class="peek-details salvage-rules"><summary>ⓘ 猎场说明</summary><p><b>拆炮夺枪</b> 巨械的三门炮座可以分别击碎。残骸落地后用 EMP 接管，获得 3 发重火力；靠近残骸，瞄准后按 E / 点交互发射，间隔 1.2 秒。仍可移动和射击，炮弹会被岩石阻挡。</p><p><b>重弹反向</b> 主炮的慢速重弹进入 EMP 范围时，脉冲将它朝准星改向。两次重火力命中巨械可提前破甲；打空不会计数。普通枪弹始终能造成伤害，即使残骸弹量耗尽也能通关。</p><p><b>三阶段</b> 武装期先拆威胁最大的炮座；生命降到 60% 自动裸露核心，25% 进入过载。预警锁定后侧移，穿过环弹缺口，避开旧位置爆圈；攻击后的恢复窗口适合集中火力。</p><p>入场套装仅本局生效，所有武器仍可切换。地图与菜单期间战斗暂停；同种子再战保留套装与难度，刷新结束本局。账号沿用个人成就与纪录，不保存进行中的猎场。</p></details>';
+  }
+  function showSiegeIntro(difficulty = 'normal', seedValue = '', loadoutId = 'free') {
+    showScreen('siege-intro', '<div class="screen-kicker">8.0 / COLOSSUS HUNT</div><h2 id="screen-title">拆下它的武器，<em>亲手结束它。</em></h2><p class="salvage-intro-note">移动巨械 · 三种可夺炮座 · 三阶段决战</p><div class="salvage-difficulties" role="group" aria-label="入场套装">' + Expedition.SALVAGE_LOADOUTS.map(loadout => '<button class="campaign-choice" data-siege-loadout="' + loadout.id + '" aria-pressed="false"><b>' + loadout.title + '</b><small>' + weapons[loadout.weapon].name + '</small></button>').join('') + '</div><div class="salvage-difficulties" role="group" aria-label="猎场难度"><button class="campaign-choice" data-siege-difficulty="normal" aria-pressed="false"><b>普通猎场</b><small>标准强度</small></button><button class="campaign-choice" data-siege-difficulty="overload" aria-pressed="false"><b>过载猎场</b><small>耐久 +20% · 伤害 +12%</small></button></div><label class="salvage-seed-label" for="siege-seed">战场种子 <small>选填</small><input id="siege-seed" inputmode="numeric" maxlength="10" placeholder="留空生成新猎场" autocomplete="off"></label><p id="siege-selection" class="salvage-selection" aria-live="polite"></p><div class="menu-buttons"><button class="launch-button" id="start-siege">出击 · 巨械猎场 <b>↗</b></button><button class="secondary-button" id="close-siege-intro">返回营地</button></div>' + siegeRules());
+    const update = () => {
+      selectChoice('siege-difficulty', difficulty); selectChoice('siege-loadout', loadoutId);
+      $('siege-selection').textContent = (difficulty === 'overload' ? '过载' : '普通') + ' · ' + Expedition.SALVAGE_LOADOUTS.find(loadout => loadout.id === loadoutId).title;
+    };
+    $('siege-seed').value = seedValue;
+    $('screen-content').querySelectorAll('[data-siege-difficulty]').forEach(button => button.addEventListener('click', () => { difficulty = button.dataset.siegeDifficulty; update(); tone('click'); }));
+    $('screen-content').querySelectorAll('[data-siege-loadout]').forEach(button => button.addEventListener('click', () => { loadoutId = button.dataset.siegeLoadout; update(); tone('click'); }));
+    $('start-siege').addEventListener('click', () => {
+      const value = $('siege-seed').value.trim();
+      if (value && (!/^\d{1,10}$/.test(value) || Number(value) > 4294967295)) { $('siege-selection').textContent = '请输入 0–4294967295 的整数种子，或留空。'; $('siege-seed').focus(); return; }
+      startSiege(difficulty, value ? Number(value) : Math.floor(Math.random() * 4294967296), loadoutId);
+    });
+    $('close-siege-intro').addEventListener('click', welcome); update();
+  }
+  function startSiege(difficulty = 'normal', seed = Math.floor(Math.random() * 4294967296), loadoutId = 'free') {
+    resetRun('frontier', null, { mode: 'siege', difficulty, seed, loadoutId }); startRun();
+  }
+  function showSiegeResult() {
+    const siege = game.siege, won = game.phase === 'won'; rememberBest();
+    showScreen('result', '<div class="result-icon">⬡</div><div class="screen-kicker">SIEGE / ' + (won ? 'COLOSSUS DOWN' : 'SIGNAL LOST') + '</div><h2 id="screen-title">' + (won ? '巨械倒下，猎场归你。' : '这次，记住它的破绽。') + '</h2><div class="result-grid"><div><strong>' + game.score + '</strong><small>猎场得分</small></div><div><strong>' + siege.captures + '</strong><small>接管炮座</small></div><div><strong>' + siege.reflections + '</strong><small>重弹反向</small></div></div><p class="result-tip">拆炮 ' + siege.wrecks.length + '/3 · 重炮发射 ' + siege.shotsFired + ' · 用时 ' + formatTime(game.elapsed) + '</p><p class="campaign-note">种子 ' + siege.seed + ' · ' + (siege.difficulty === 'overload' ? '过载' : '普通') + ' · ' + profileSaveNote() + '</p><div class="menu-buttons"><button class="launch-button" id="siege-retry">同种子再战 <b>↗</b></button><button class="secondary-button" id="siege-new">新的猎场</button><button class="secondary-button" id="siege-camp">返回营地</button></div>');
+    $('siege-retry').addEventListener('click', () => startSiege(siege.difficulty, siege.seed, siege.loadoutId));
+    $('siege-new').addEventListener('click', () => startSiege(siege.difficulty, undefined, siege.loadoutId));
+    $('siege-camp').addEventListener('click', () => { resetRun('frontier'); welcome(); });
+    if (!won && game.lastDamage) {
+      const cause = document.createElement('p'); cause.className = 'result-cause'; cause.textContent = game.lastDamage.name + ' · ' + game.lastDamage.hint;
+      $('screen-content').querySelector('.result-grid').after(cause);
+    }
+    addEvolutionSummary($('screen-content').querySelector('.menu-buttons'), true); addArchiveButton($('screen-content').querySelector('.menu-buttons'));
   }
   function salvageStateText() {
     const salvage = game.salvage;
@@ -720,7 +765,7 @@
     renderer.camera.x = game.player.x; renderer.camera.y = game.player.y;
     closeScreen(); tone('click'); processEvents();
     banner('OPERATION / ' + game.map.id.toUpperCase(), game.map.name + ' · 行动开始');
-    if (game.salvage) $('run-log').textContent = game.map.briefing; else notify(game.map.briefing);
+    if (game.salvage || game.siege) $('run-log').textContent = game.map.briefing; else notify(game.map.briefing);
   }
   function pauseGame() {
     if (activeRevelation || game.phase !== 'playing' || screen) return;
@@ -746,6 +791,12 @@
     addTacticSummary($('screen-content').querySelector('.menu-buttons'));
     addEvolutionSummary($('screen-content').querySelector('.menu-buttons'));
     addDisplayEntry($('screen-content').querySelector('.menu-buttons'));
+    if (game.siege) {
+      const rules = document.createElement('div'); rules.innerHTML = siegeRules(); $('screen-content').querySelector('.menu-buttons').before(rules);
+      const stats = $('screen-content').querySelectorAll('.result-grid strong'), labels = $('screen-content').querySelectorAll('.result-grid small');
+      stats[2].textContent = game.siege.wrecks.length + '/3'; labels[2].textContent = '拆毁炮座';
+      $('resume-run').innerHTML = '继续猎场 <b>↗</b>';
+    }
     if (game.voyage) {
       const summary = document.createElement('div'); summary.className = 'campaign-carried';
       summary.innerHTML = '<b>星海远航 · 第 ' + game.voyage.node + '/7 段</b><p>' + voyageBuildText() + '</p><span>' + (voyagePairs().map(pair => pair.title + '：' + pair.description).join(' / ') || '成对装置可激活共鸣；下一次清场可调整。') + '</span>';
@@ -801,6 +852,10 @@
       $('screen-content').querySelector('.guide-tip').textContent = '危险回收：保险箱可用 EMP 开启 4 秒静默窗口后交互，或射击破锁。钻探启动后在圈内累计 8 秒，离圈保留进度。运输无人机射击截停，靠近交互取货。样本登舰前不计奖金，死亡会遗失。';
       expeditionTip.textContent = '破锁、钻探与截停提高警戒，静默开箱动静较小。警戒升级会招来增援，高警戒还有扫描爆圈。撤离点交互呼叫接应也会招来追兵，10 秒到达后圈内累计 3 秒登舰，离圈暂停。空手也能安全撤回，无需击败首领或清空增援。地图选择只改变追踪，不会领取或呼叫。手机保持双摇杆时，第三指仍可装填、换枪、EMP 和交互。';
     }
+    if (game.siege) {
+      $('screen-content').querySelector('.guide-tip').textContent = '巨械猎场：射击拆毁三种炮座，用 EMP 接管残骸，再瞄准并靠近交互开炮。EMP 也可把范围内慢速重弹朝准星改向；每座残骸只有 3 发。';
+      expeditionTip.textContent = '普通武器始终有效，不必夺炮也能通关。两次重火力真实命中可提前破甲，60% 生命必进裸核阶段，25% 过载；锁向后侧移、穿环弹缺口，抓住攻击后的恢复窗口。手机双摇杆持有时仍可用第三指交互开炮、释放 EMP、换弹和换枪。';
+    }
     $('screen-content').querySelector('.menu-buttons').before(expeditionTip);
   }
   function bindMenuChoice(button, select) {
@@ -833,6 +888,7 @@
     if (!['ready', 'playing'].includes(game.phase) || (screen && !['pause', 'welcome'].includes(screen))) return;
     mapReturn = screen || 'playing'; paused = game.phase === 'playing';
     if (game.salvage) { showSalvageMap(); return; }
+    if (game.siege) { showSiegeMap(); return; }
     if (game.voyage) {
       const target = game.voyageTarget(), room = game.voyage.room;
       const boss = game.enemies.find(enemy => enemy.type === 'boss' && enemy.hp > 0);
@@ -916,6 +972,19 @@
     }));
     renderer.drawMinimap($('tactical-map'), game, { detailed: true });
   }
+  function showSiegeMap() {
+    const siege = game.siege, boss = game.enemies.find(enemy => enemy.id === siege.bossId), target = game.siegeTarget();
+    const targets = [boss, ...siege.parts.filter(part => part.hp > 0), ...siege.wrecks.filter(wreck => wreck.status !== 'spent')].filter(Boolean);
+    const rows = targets.map(item => {
+      const wreck = item.type === 'siege-wreck', name = wreck ? siegePartNames[item.kind] + '残骸' : item.name;
+      const state = wreck ? item.status === 'captured' ? '重炮 ' + item.ammo + '/3 · 瞄准后交互' : 'EMP 接管 → 重炮 ×3' : item.siegePart ? '射击拆炮 → EMP 接管' : boss.shielded ? '装甲中 · 重火力破甲' : boss.stage === 3 ? '过载反扑' : '核心裸露';
+      return '<button class="map-destination' + (item.id === target?.id ? ' selected' : '') + '" data-siege-target="' + item.id + '"><small>' + Math.round(Math.hypot(item.x - game.player.x, item.y - game.player.y) / 10) + ' m</small><b>' + name + '</b><small>' + state + '</small><span>' + (item.id === target?.id ? '◎ 正在追踪' : '追踪 →') + '</span></button>';
+    }).join('');
+    showScreen('map', '<div class="screen-kicker">SIEGE / 战术地图</div><h2 id="screen-title">巨械猎场</h2><div class="tactical-layout"><div class="tactical-surface"><canvas id="tactical-map" width="640" height="480" aria-label="巨械猎场：巨械、炮座、残骸、掩体和当前位置"></canvas><div class="tactical-legend"><span>△ 你</span><span>⬡ 巨械</span><span>◇ 炮座</span><span>▣ 残骸</span></div></div><div class="destination-list">' + rows + '</div></div><div class="menu-buttons"><button class="launch-button" id="close-map">返回猎场 <b>↗</b></button></div><p class="map-note">已暂停 · 点选仅追踪 · 种子 ' + siege.seed + '</p>' + siegeRules());
+    FrontierTouch.bindTouchAction($('close-map'), closeMap);
+    $('screen-content').querySelectorAll('[data-siege-target]').forEach(button => bindMenuChoice(button, () => { if (game.selectSiegeTarget(Number(button.dataset.siegeTarget))) { closeMap(); tone('click'); } }));
+    renderer.drawMinimap($('tactical-map'), game, { detailed: true });
+  }
   function closeMap() {
     if (mapReturn === 'pause') showPause();
     else if (mapReturn === 'welcome') { paused = false; welcome(); }
@@ -976,7 +1045,7 @@
     clearTimeout(hitTimer); clearTimeout(damageTimer); clearTimeout(bannerTimer); clearTimeout(notificationTimer);
     $('aim-reticle').classList.remove('hit', 'critical'); $('damage-flash').classList.remove('visible'); $('notification').classList.remove('visible'); $('event-banner').classList.add('hidden');
   }
-  function restartRun() { if (game.salvage) { rememberBest(); startSalvage(game.salvage.difficulty, game.salvage.seed, game.salvage.loadoutId); return; } if (game.mode === 'voyage') { startVoyage(game.voyage.initialDeviceId || game.voyage.devices[0], game.voyage.difficulty, game.voyage.seed); return; } if (game.mode === 'trial') { startTrial(game.trial.seed); return; } rememberBest(); if (game.mode === 'campaign') { startCampaign(game.campaign.visited[0], game.campaign.doctrineId, game.campaign.seed); return; } resetRun(); startRun(); }
+  function restartRun() { if (game.siege) { rememberBest(); startSiege(game.siege.difficulty, game.siege.seed, game.siege.loadoutId); return; } if (game.salvage) { rememberBest(); startSalvage(game.salvage.difficulty, game.salvage.seed, game.salvage.loadoutId); return; } if (game.mode === 'voyage') { startVoyage(game.voyage.initialDeviceId || game.voyage.devices[0], game.voyage.difficulty, game.voyage.seed); return; } if (game.mode === 'trial') { startTrial(game.trial.seed); return; } rememberBest(); if (game.mode === 'campaign') { startCampaign(game.campaign.visited[0], game.campaign.doctrineId, game.campaign.seed); return; } resetRun(); startRun(); }
   function showUpgrade() {
     clearInput();
     const hasEvolution = game.upgradeChoices.some(upgrade => upgrade.evolution);
@@ -1001,6 +1070,7 @@
     else closeScreen();
   }
   function showResult() {
+    if (game.siege) { showSiegeResult(); return; }
     if (game.mode === 'salvage') { showSalvageResult(); return; }
     if (game.mode === 'voyage') { showVoyageResult(); return; }
     if (game.mode === 'trial') { showTrialResult(); return; }
@@ -1068,7 +1138,7 @@
     const text = coachStep === 0 ? coarse ? '拖动左摇杆移动，再拖动右摇杆瞄准射击' : 'WASD 移动，鼠标瞄准并按住左键射击' : coachStep === 1 ? coarse ? '点冲刺避开攻击；掠过敌人可留下紫色印记' : 'Shift 冲刺避开攻击；掠过敌人可留下紫色印记' : coarse ? '点装填开始换弹，进入绿色区再点一次' : 'R 开始换弹，进入绿色区再按 R，完成精准装填';
     if (!coachDismissed && (coachStep === 3 || game.relays.some(relay => ['charging', 'active', 'complete'].includes(relay.status)) || game.salvage?.sources.some(source => ['drilling', 'open', 'collected'].includes(source.status) || source.quietTimer > 0))) { coachDismissed = true; profiles.recordCoach(); }
     $('field-coach').setAttribute('data-step', String(coachStep));
-    $('field-coach').classList.toggle('hidden', Boolean(game.mode === 'trial' || coachDismissed || !canPlay() || game.bossSpawned || (rift && rift.status !== 'idle')));
+    $('field-coach').classList.toggle('hidden', Boolean(game.mode === 'trial' || coachDismissed || !canPlay() || (game.bossSpawned && !game.siege) || (rift && rift.status !== 'idle')));
     setText('coach-text', text);
   }
 
@@ -1078,7 +1148,8 @@
     const campaign = game.campaign, doctrine = campaign ? Expedition.CAMPAIGN_DOCTRINES.find(item => item.id === campaign.doctrineId) : null;
     const crisis = campaign ? Expedition.CAMPAIGN_CRISES.find(item => item.id === campaign.crisisId) : null;
     const nexus = game.map.id === 'nexus', anchors = nexus ? game.enemies.filter(enemy => enemy.type === 'anchor' && enemy.hp > 0).length : 0;
-    stage.classList.toggle('campaign-final', nexus);
+    stage.classList.toggle('siege-mode', !!game.siege);
+    stage.classList.toggle('campaign-final', nexus || !!game.siege);
     const evolution = Expedition.EVOLUTIONS.find(item => item.id === game.evolutionId);
     const weaponName = evolution?.weapon === player.weapon ? evolution.title : weapon.name;
     const reactor = game.reactor, overdrive = reactor.timer > 0, charged = reactor.charge >= reactor.maxCharge;
@@ -1219,7 +1290,7 @@
       $('boss-hud').style.setProperty('--boss-color', boss.color || game.map.boss.color);
       $('boss-hud').classList.toggle('winding', boss.windup > 0);
       $('boss-hud').classList.toggle('exposed', boss.recoveryTimer > 0 && !boss.shielded);
-      setText('boss-tactic', boss.windup > 0 ? (boss.attackName || '攻击预警') + ' · ' + (boss.attackHint || '离开危险区域') : boss.shielded ? '锚点供能 · 首领减伤 65% · 先拆双锚' : boss.recoveryTimer > 0 ? '弱点暴露 · 趁现在集中火力' : nexus ? '双锚已断 · 全力攻击核心' : game.map.boss.subtitle);
+      setText('boss-tactic', boss.windup > 0 ? (boss.attackName || '攻击预警') + ' · ' + (boss.attackHint || '离开危险区域') : boss.shielded ? game.siege ? '拆炮 → EMP 接管 → 瞄准反击' : '锚点供能 · 首领减伤 65% · 先拆双锚' : boss.recoveryTimer > 0 ? '弱点暴露 · 趁现在集中火力' : nexus ? '双锚已断 · 全力攻击核心' : game.map.boss.subtitle);
     }
     const danger = game.hazards.filter(hazard => (hazard.owner === 'environment' || hazard.voyageHazard) && hazard.remaining > 0).sort((a, b) => a.remaining - b.remaining)[0];
     $('sector-status').classList.toggle('warning', !!danger);
@@ -1281,6 +1352,18 @@
         percentage('relay-progress', work.progress / work.duration);
         setText('relay-progress-label', work.name + ' · ' + work.progress.toFixed(1) + '/' + work.duration + 's'); setText('relay-wave-label', drill ? '圈内累计推进 · 离圈保留进度' : (inside ? 'EMP 已消耗 · 拦截下一波增援' : '离圈暂停 · 进度保留'));
       }
+    }
+    if (game.siege) {
+      const siege = game.siege, target = game.siegeTarget();
+      const phaseName = boss?.stage === 3 ? '过载反扑' : boss?.shielded ? '武装狩猎' : '核心裸露';
+      setText('relay-count', '阶段 ' + (boss?.stage || 1) + '/3');
+      setText('objective-text', target ? target.label + ' · ' + Math.round(Math.hypot(target.x - player.x, target.y - player.y) / 10) + ' m' : phaseName);
+      setText('tracked-target', target?.hint || game.map.briefing);
+      setText('mission-state', activeRevelation ? '回响显现' : paused ? '猎场暂停' : game.phase === 'won' ? '巨械击破' : game.phase === 'lost' ? '狩猎中断' : phaseName);
+      setText('sector-status', '拆炮 ' + siege.wrecks.length + '/3 · 接管 ' + siege.captures + ' · 反向 ' + siege.reflections);
+      $('relay-progress-wrap').classList.add('hidden');
+      $('skill-button').setAttribute('aria-label', 'EMP：接管附近炮座残骸，将范围内重弹朝准星改向，并清除普通敌弹');
+      if (player.skillCooldown <= 0) setText('skill-label', '接管 / 反向');
     }
     $('relay-progress-label').classList.toggle('hidden', !objectiveExpanded && !!game.salvage && (!!game.salvage.evac || game.salvage.comms.status === 'linking'));
     $('pause-toggle').disabled = !!activeRevelation || !['playing'].includes(game.phase) || (!!screen && screen !== 'pause');

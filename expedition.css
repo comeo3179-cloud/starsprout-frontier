@@ -530,6 +530,24 @@ body.immersive-page{overflow:hidden}
 
 /* A continuous recovery run uses the existing controls and objective row. */
 .camp-mode-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+.camp-mode-grid #siege-entry{grid-column:1/-1;border-color:#a98c5870;background:linear-gradient(105deg,#392f2344,#182d3388)}
+#siege-entry .campaign-entry-mark{color:#ffd491}
+.siege-mode .boss-hud{pointer-events:none}
+@media(pointer:coarse){
+  .siege-mode #boss-tactic{display:none}
+  .siege-mode .boss-hud>div:first-child{font-size:10px;line-height:1.4;letter-spacing:0;gap:8px}
+  .siege-mode .boss-track{margin-top:3px}
+  .game-stage.siege-mode .field-coach:not(.hidden){display:block}
+  .game-stage.siege-mode:has(.notification.visible) .field-coach,.game-stage.siege-mode:has(.event-banner:not(.hidden)) .field-coach,.game-stage.siege-mode:has(.objective-hud:not(.collapsed)) .field-coach{display:none}
+}
+@media(pointer:coarse) and (orientation:portrait){
+  .game-stage.siege-mode .boss-hud{top:calc(var(--safe-top) + 145px);left:8px;right:8px;width:auto;min-width:0;transform:none}
+  .game-stage.siege-mode:is(:fullscreen,.immersive) .boss-hud{top:calc(var(--safe-top) + 180px)}
+  .game-stage.siege-mode .combat-notices{--notice-top:180px;top:calc(var(--safe-top) + var(--notice-top))}
+  .game-stage.siege-mode:is(:fullscreen,.immersive) .combat-notices{--notice-top:215px}
+  .game-stage.siege-mode .field-coach{top:calc(var(--safe-top) + 180px)}
+  .game-stage.siege-mode:is(:fullscreen,.immersive) .field-coach{top:calc(var(--safe-top) + 215px)}
+}
 .salvage-entry{border-color:#93cbb4;background:linear-gradient(125deg,#23443d,#172b34);box-shadow:inset 3px 0 #b6e9c4}
 .salvage-entry .campaign-entry-mark{color:#c4f2c6}
 .salvage-screen{background:radial-gradient(ellipse at top,#25423bf5,#0a1820f9);padding:24px;align-items:center}

@@ -12,6 +12,7 @@
   const voyageColors = { cosmos: '#c8b7ff', forge: '#ffc88c', tide: '#94eadf' };
   const voyageDeviceColors = { afterimage: '#8fffe0', needles: '#b0ffe6', mirror: '#ffd9a2', sentry: '#fff0b7', well: '#b6c5ff', battery: '#d5baff' };
   const salvageColors = { vault: '#f4cf96', drill: '#9ce8d3', drone: '#a9d6ff', exit: '#c7f4df', cargo: '#ffc18a', comms: '#b7c5ff', lastchance: '#ffe08b' };
+  const siegeColors = { cannon: '#ffc28d', lance: '#c9b7ff', mortar: '#ffe08b', captured: '#9affdd', capture: '#9affdd', turret: '#9affdd', part: '#ffd28b', core: '#ffab91' };
 
   function path(ctx, points, close = true) {
     ctx.beginPath();
@@ -215,6 +216,13 @@
         if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
         const angle = event.angle ?? Math.atan2(event.dy || 0, event.dx || 1);
         switch (event.type) {
+          case 'siege-start': case 'siege-part-break': case 'siege-capture': case 'siege-turret-shot': case 'siege-redirect': case 'siege-armor-break': case 'siege-overload': case 'siege-complete': {
+            const friendly = ['siege-capture', 'siege-turret-shot', 'siege-redirect'].includes(event.type), large = ['siege-armor-break', 'siege-overload', 'siege-complete'].includes(event.type);
+            const color = friendly ? siegeColors.captured : siegeColors[event.kind] || siegeColors.core;
+            this.rings.push({ x, y, radius: large ? 105 : 36, age: 0, life: large ? .65 : .3, color });
+            this.burst(x, y, color, large ? 12 : 5, large ? 140 : 75, .35, angle);
+            break;
+          }
           case 'salvage-vault-unlock': case 'salvage-collected':
             this.rings.push({ x, y, radius: 35, age: 0, life: .35, color: '#aaf4d9' }); this.burst(x, y, '#c5ffe6', 6, 65, .3);
             break;
@@ -653,10 +661,11 @@
       this.overdriveProgress = clamp((game.reactor?.timer || 0) / (game.reactor?.duration || 7), 0, 1);
       this.doctrineId = game.campaign?.doctrineId || null;
       const p = game.player;
+      this.siegeAim = game.siege?.aimTarget;
       this.interaction = game.interactionState?.();
       this.conductionHazard = (game.hazards || []).find(hazard => hazard.conductionRelayId != null && !hazard.resolved);
       const halfW = this.width / this.scale / 2, halfH = this.height / this.scale / 2;
-      const followSalvage = !!game.salvage && this.touchControls;
+      const followSalvage = !!(game.salvage || game.siege) && this.touchControls;
       const tx = followSalvage ? p.x : this.world.width < halfW * 2 ? this.world.width / 2 : clamp(p.x, halfW, this.world.width - halfW);
       const ty = followSalvage ? p.y : this.world.height < halfH * 2 ? this.world.height / 2 : clamp(p.y, halfH, this.world.height - halfH);
       if (this.lastPlayer !== p) {
@@ -735,6 +744,7 @@
         circle(ctx, echo.x, echo.y, echo.radius * (1 - echo.remaining / .65), null, '#a9dbff', 2);
       }
       const actors = [];
+      for (const wreck of game.siege?.wrecks || []) if (this.visible(wreck.x, wreck.y, wreck.radius + 40)) actors.push({ y: wreck.y, kind: 'siege-wreck', data: wreck });
       for (const encounter of game.encounters || []) if (this.visible(encounter.x, encounter.y, 110)) actors.push({ y: encounter.y, kind: 'encounter', data: encounter });
       for (const obstacle of game.obstacles || []) if (this.visible(obstacle.x, obstacle.y, obstacle.radius + 30)) actors.push({ y: obstacle.y, kind: 'rock', data: obstacle });
       for (const field of [...(game.battlefield?.props || []), ...(game.battlefield?.mines || [])]) if (field.status !== 'spent' && this.visible(field.x, field.y, (field.radius || 20) + 30)) actors.push({ y: field.y, kind: 'field', data: field });
@@ -764,6 +774,7 @@
         else if (actor.kind === 'salvage-comms') this.drawSalvageComms(actor.data, p);
         else if (actor.kind === 'salvage-lastchance') this.drawSalvageLastChance(actor.data, p);
         else if (actor.kind === 'salvage-cargo') this.drawSalvageCargo(actor.data, p);
+        else if (actor.kind === 'siege-wreck') this.drawSiegeWreck(actor.data, p);
         else if (actor.kind === 'encounter') this.drawEncounter(actor.data, p);
         else if (actor.kind === 'enemy') this.drawEnemy(actor.data);
         else this.drawPlayer(actor.data);
@@ -1132,6 +1143,7 @@
       const ctx = this.ctx, { width: w, height: h } = this.world;
       ctx.fillStyle = this.groundPattern;
       ctx.fillRect(0, 0, w, h);
+      if (game.siege) { this.paintSiegeTerrain(game); return; }
       if (game.voyage) { this.paintVoyageTerrain(game); return; }
       if (game.salvage) { this.paintSalvageTerrain(game); return; }
       if (this.mapId === 'nexus') { this.paintNexusTerrain(game); return; }
@@ -1206,6 +1218,33 @@
       for (let x = 80; x < w; x += 160) {
         circle(ctx, x, 29, 3, '#b4c484'); circle(ctx, x, h - 29, 3, '#b4c484');
       }
+    }
+
+    paintSiegeTerrain(game) {
+      const ctx = this.ctx, { width: w, height: h } = this.world, cx = w / 2, cy = h / 2;
+      ctx.fillStyle = '#292e35'; ctx.fillRect(0, 0, w, h);
+      for (let y = 40; y < h; y += 120) for (let x = 40; x < w; x += 160) {
+        ctx.strokeStyle = '#40474e'; ctx.lineWidth = 1; ctx.strokeRect(x, y, 154, 114);
+        for (const dx of [8, 146]) circle(ctx, x + dx, y + 8, 1.5, '#697074');
+      }
+      for (const radius of [240, 470]) {
+        circle(ctx, cx, cy, radius, null, '#181f29', 26);
+        ctx.setLineDash([8, 32]); circle(ctx, cx, cy, radius, null, '#8b7754', 2); ctx.setLineDash([]);
+      }
+      for (let index = 0; index < 4; index++) {
+        ctx.save(); ctx.translate(cx, cy); ctx.rotate(index * Math.PI / 2);
+        path(ctx, [[490, -30], [w * .5 - 80, -30], [w * .5 - 80, 30], [490, 30]], false); ctx.strokeStyle = '#555b5a'; ctx.lineWidth = 4; ctx.stroke();
+        for (let x = 510; x < w * .5 - 80; x += 45) { path(ctx, [[x, -33], [x, 33]], false); ctx.strokeStyle = '#a48b5844'; ctx.lineWidth = 3; ctx.stroke(); }
+        ctx.restore();
+      }
+      polygon(ctx, cx, cy, 174, 8, Math.PI / 8); ctx.fillStyle = '#333b41'; ctx.fill(); ctx.strokeStyle = '#75746b'; ctx.lineWidth = 4; ctx.stroke();
+      for (let index = 0; index < 8; index++) {
+        const angle = index * TAU / 8;
+        ctx.save(); ctx.translate(cx + Math.cos(angle) * 185, cy + Math.sin(angle) * 185); ctx.rotate(angle);
+        box(ctx, -15, -9, 30, 18, 2, '#1c2a30', '#7c795f'); ctx.restore();
+      }
+      ctx.strokeStyle = '#737067'; ctx.lineWidth = 10; ctx.strokeRect(12, 12, w - 24, h - 24);
+      ctx.strokeStyle = '#b59b6966'; ctx.lineWidth = 2; ctx.setLineDash([18, 26]); ctx.strokeRect(28, 28, w - 56, h - 56); ctx.setLineDash([]);
     }
 
     paintSalvageTerrain(game) {
@@ -2261,6 +2300,7 @@
 
     drawEnemy(e) {
       const ctx = this.ctx, r = e.radius || 17, boss = e.type === 'boss';
+      if (e.siegePart || boss && e.variant === 'siege') { this.drawSiegeEnemy(e); return; }
       if (boss && e.variant === 'voyage') { this.drawVoyageEnemy(e); return; }
       if (['bulwark', 'breacher', 'engineer'].includes(e.type)) { this.drawBattlefieldEnemy(e); return; }
       if (boss && e.variant === 'ruins') { this.drawRuinsEnemy(e); return; }
@@ -2569,9 +2609,94 @@
       ctx.restore();
     }
 
+    drawSiegeModule(kind, x, y, angle, color) {
+      const ctx = this.ctx;
+      ctx.save(); ctx.translate(x, y); ctx.rotate(angle || 0);
+      polygon(ctx, 0, 0, 28, 6, Math.PI / 6); ctx.fillStyle = '#303d44'; ctx.fill(); ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.stroke();
+      if (kind === 'cannon') {
+        box(ctx, -13, -15, 28, 30, 4, '#68747a', '#aeb7af'); box(ctx, 7, -9, 34, 18, 3, '#263842', color);
+        ctx.fillStyle = color; ctx.fillRect(33, -6, 5, 12);
+      } else if (kind === 'lance') {
+        for (const side of [-1, 1]) { box(ctx, -13, side * 10 - 4, 44, 8, 2, '#526275', color); }
+        path(ctx, [[-12, -7], [22, 0], [-12, 7]]); ctx.fillStyle = color; ctx.fill();
+      } else {
+        for (const side of [-1, 1]) { box(ctx, -16, side * 12 - 6, 31, 12, 3, '#766747', color); }
+        circle(ctx, 1, 0, 15, '#192b32', color, 2); circle(ctx, 1, 0, 8, '#766747', '#eee0b2', 2);
+      }
+      ctx.restore();
+    }
+
+    drawSiegeEnemy(e) {
+      if (e.hp <= 0) return;
+      const ctx = this.ctx, r = e.radius || 88;
+      if (e.siegePart) {
+        const color = siegeColors[e.siegePart];
+        this.drawSiegeModule(e.siegePart, e.x, e.y, e.shotAngle ?? e.angle, color);
+        this.healthBar(e.x, e.y - r - 14, 54, clamp(e.hp / e.maxHp, 0, 1), color);
+        if (e.windup > 0) { ctx.setLineDash([5 / this.scale, 7 / this.scale]); circle(ctx, e.x, e.y, r + 10, null, color, 1.5 / this.scale); ctx.setLineDash([]); }
+        if (this.hitFlashes.get(e.id) > 0) circle(ctx, e.x, e.y, 20, '#fff4d780');
+        return;
+      }
+      const open = !e.shielded, color = e.stage === 3 ? '#ff7d93' : open ? '#fff1b0' : siegeColors.core;
+      ctx.save(); ctx.translate(e.x, e.y); ctx.rotate(e.angle || 0);
+      ctx.beginPath(); ctx.ellipse(0, 18, r + 36, r * .85, 0, 0, TAU); ctx.fillStyle = '#101b2488'; ctx.fill();
+      for (const side of [-1, 1]) {
+        box(ctx, -r * .85, side * r * .64 - 12, r * 1.7, 24, 6, '#172a35', '#73828a');
+        for (let index = 0; index < 3; index++) {
+          const x = -r * .6 + index * r * .6, stride = this.reducedMotion ? 0 : Math.sin(this.time * 4 + index) * 3;
+          path(ctx, [[x, side * r * .65], [x - 15 + stride, side * (r + 8)], [x + 8, side * (r + 22)]], false); ctx.strokeStyle = '#536571'; ctx.lineWidth = 11; ctx.stroke();
+          ctx.strokeStyle = '#a2aeab'; ctx.lineWidth = 2; ctx.stroke();
+          box(ctx, x - 5, side * (r + 21) - 5, 24, 10, 2, '#263a43', '#8e9381');
+        }
+      }
+      polygon(ctx, 0, 0, r * .92, 8, Math.PI / 8); ctx.fillStyle = '#414d58'; ctx.fill(); ctx.strokeStyle = '#9aaba9'; ctx.lineWidth = 3; ctx.stroke();
+      for (let index = 0; index < 6; index++) {
+        const angle = index * TAU / 6;
+        ctx.save(); ctx.rotate(angle); path(ctx, open ? [[45, -17], [72, -25], [84, -7], [64, -1]] : [[34, -19], [69, -26], [78, -8], [41, -1]]);
+        ctx.fillStyle = open ? '#54606a' : '#7c8582'; ctx.fill(); ctx.strokeStyle = '#242f39'; ctx.lineWidth = 3; ctx.stroke(); ctx.restore();
+      }
+      circle(ctx, 0, 0, open ? 43 : 30, '#182634', color, open ? 3 : 2);
+      polygon(ctx, 0, 0, open ? 28 : 15, 6, Math.PI / 6); ctx.fillStyle = color; ctx.fill();
+      if (open) { path(ctx, [[-14, -31], [-3, -16], [-8, -5], [15, 8], [8, 23]], false); ctx.strokeStyle = '#eefff0'; ctx.lineWidth = 2; ctx.stroke(); }
+      if (e.stage === 3) for (const side of [-1, 1]) { path(ctx, [[-47, side * 20], [-58, side * 37], [-37, side * 29]], false); ctx.strokeStyle = '#ffa2a8'; ctx.lineWidth = 2; ctx.stroke(); }
+      if (this.hitFlashes.get(e.id) > 0) circle(ctx, 0, 0, 30, '#fff6d766');
+      ctx.restore();
+      if (e.attackKind === 'siege-ring' && e.windup > 0) {
+        const gap = e.ringGapWidth || Math.PI / 4;
+        ctx.save(); ctx.translate(e.x, e.y); ctx.setLineDash([5 / this.scale, 10 / this.scale]);
+        ctx.beginPath(); ctx.arc(0, 0, r + 43, e.ringGapAngle + gap / 2, e.ringGapAngle + TAU - gap / 2); ctx.strokeStyle = '#ffb09b'; ctx.lineWidth = 2 / this.scale; ctx.stroke(); ctx.setLineDash([]);
+        const angle = e.ringGapAngle;
+        path(ctx, [[Math.cos(angle) * (r + 32), Math.sin(angle) * (r + 32)], [Math.cos(angle) * (r + 58), Math.sin(angle) * (r + 58)]], false); ctx.strokeStyle = '#fff1b0'; ctx.lineWidth = 3 / this.scale; ctx.stroke(); ctx.restore();
+      }
+    }
+
+    drawSiegeWreck(wreck, player) {
+      const ctx = this.ctx, captured = wreck.status === 'captured', spent = wreck.status === 'spent', color = captured ? siegeColors.captured : spent ? '#718185' : siegeColors[wreck.kind];
+      const angle = captured ? this.siegeAim ? Math.atan2(this.siegeAim.y - wreck.y, this.siegeAim.x - wreck.x) : player.angle : wreck.angle || 0;
+      ctx.save(); ctx.globalAlpha *= spent ? .55 : 1;
+      this.drawSiegeModule(wreck.kind, wreck.x, wreck.y, angle, color);
+      if (captured) {
+        for (let index = 0; index < 3; index++) { ctx.fillStyle = index < wreck.ammo ? color : '#34484e'; ctx.fillRect(wreck.x - 16 + index * 12, wreck.y + 36, 8, 5); }
+        if (wreck.cooldown > 0) circle(ctx, wreck.x, wreck.y, 36, null, color + '77', 1 / this.scale);
+      } else { path(ctx, [[wreck.x - 9, wreck.y - 13], [wreck.x + 3, wreck.y - 3], [wreck.x - 4, wreck.y + 10]], false); ctx.strokeStyle = spent ? '#718185' : '#172733'; ctx.lineWidth = 3; ctx.stroke(); }
+      ctx.restore();
+      if (!spent && this.interaction?.target === wreck && Math.hypot(player.x - wreck.x, player.y - wreck.y) <= 94) {
+        const label = captured ? wreck.cooldown > 0 ? '冷却 ' + wreck.cooldown.toFixed(1) + 's' : (this.touchControls ? '点按 · ' : 'E · ') + '开火 ' + wreck.ammo + '/3' : (this.touchControls ? 'EMP' : 'Q') + ' · 接管';
+        this.drawEncounterLabel(label, wreck.x, wreck.y - 48 / this.scale, color, true);
+      }
+    }
+
     drawBullet(b) {
       const ctx = this.ctx, enemy = b.owner === 'enemy';
       const angle = Math.atan2(b.vy || 0, b.vx || 1), radius = b.radius || 3;
+      if (b.siegeHeavy) {
+        const color = enemy ? '#ffab91' : siegeColors.captured;
+        ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(Math.atan2(b.vy || 0, b.vx ?? 1));
+        path(ctx, [[-31, 0], [-8, 0]], false); ctx.strokeStyle = color + '55'; ctx.lineWidth = radius * 2; ctx.stroke();
+        path(ctx, [[-9, -radius], [radius + 7, 0], [-9, radius], [-3, 0]]); ctx.fillStyle = color; ctx.fill(); ctx.strokeStyle = '#f9ffe1'; ctx.lineWidth = 1; ctx.stroke();
+        if (b.kind === 'grenade') circle(ctx, -5, 0, radius + 4, null, color, 1.5);
+        ctx.restore(); return;
+      }
       if (!enemy && b.kind === 'voyage') {
         const color = b.color || voyageDeviceColors[b.deviceId] || '#c8b7ff';
         ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(angle);
@@ -2633,6 +2758,24 @@
 
     drawHazard(h, game = {}) {
       const ctx = this.ctx, progress = h.resolved ? 1 : 1 - clamp((h.remaining || 0) / (h.duration || 1), 0, 1);
+      if (h.siegeHazard) {
+        if (h.visualOnly && h.type === 'blast' && (game.enemies || []).some(e => e.id === h.sourceId && e.attackKind === 'siege-ring')) return;
+        const color = h.color || '#ffc28d', radius = h.radius || 22;
+        ctx.save(); ctx.translate(h.x, h.y); ctx.rotate(h.angle || 0);
+        ctx.save(); ctx.globalAlpha *= h.resolved ? .15 : .04 + progress * .07; ctx.fillStyle = color;
+        if (h.type === 'lane' || h.type === 'charge') ctx.fillRect(0, -radius, h.length || 720, radius * 2); else circle(ctx, 0, 0, radius, color); ctx.restore();
+        ctx.strokeStyle = '#192735'; ctx.lineWidth = 4 / this.scale;
+        if (h.type === 'lane' || h.type === 'charge') {
+          ctx.strokeRect(0, -radius, h.length || 720, radius * 2); ctx.strokeStyle = color; ctx.lineWidth = 1.5 / this.scale; ctx.strokeRect(0, -radius, h.length || 720, radius * 2);
+          for (let x = 40; x < (h.length || 720); x += 80) { path(ctx, [[x - 7, -6], [x, 0], [x - 7, 6]], false); ctx.stroke(); }
+          path(ctx, [[0, -radius - 5], [(h.length || 720) * progress, -radius - 5]], false); ctx.strokeStyle = '#fff1c0'; ctx.lineWidth = 2 / this.scale; ctx.stroke();
+        } else {
+          circle(ctx, 0, 0, radius, null, '#192735', 4 / this.scale); circle(ctx, 0, 0, radius, null, color, 1.5 / this.scale);
+          if (!h.resolved) circle(ctx, 0, 0, Math.max(1, radius * (1 - progress)), null, color, 1.5 / this.scale);
+          path(ctx, [[-7, -7], [7, 7]], false); ctx.stroke(); path(ctx, [[7, -7], [-7, 7]], false); ctx.stroke();
+        }
+        ctx.restore(); return;
+      }
       if (h.engineerLanding) {
         ctx.save(); ctx.translate(h.x, h.y); ctx.setLineDash([4 / this.scale, 6 / this.scale]);
         circle(ctx, 0, 0, h.radius || 32, null, '#182c36', 4 / this.scale); circle(ctx, 0, 0, h.radius || 32, null, '#ffc187', 1.6 / this.scale); ctx.setLineDash([]);
@@ -2878,13 +3021,15 @@
       this.nexusPointerRects = [];
       const voyageTarget = game.voyageTarget?.();
       const salvageTarget = game.salvageTarget?.();
-      if (game.salvage) { if (salvageTarget) targets.push({ ...salvageTarget, color: salvageColors[salvageTarget.kind], encounter: true, salvage: true }); }
+      const siegeTarget = game.siegeTarget?.();
+      if (game.siege) { if (siegeTarget) targets.push({ ...siegeTarget, color: siegeColors[siegeTarget.kind] || siegeColors.core, encounter: true, siege: true }); }
+      else if (game.salvage) { if (salvageTarget) targets.push({ ...salvageTarget, color: salvageColors[salvageTarget.kind], encounter: true, salvage: true }); }
       else if (game.voyage) { if (voyageTarget) targets.push({ ...voyageTarget, color: voyageTarget.kind === 'exit' ? '#b9f5da' : '#ddc8ff', encounter: true, voyage: true }); }
       else if (this.targetEncounter) targets.push({ ...this.targetEncounter, label: this.targetEncounter.name, encounter: true });
       else if (this.targetContract) targets.push({ ...this.targetContract, color: '#cab7ff', label: this.targetContract.name });
       else if (this.targetDelivery) targets.push({ ...this.targetDelivery, encounter: true, delivery: true });
       else if (this.targetRelay) targets.push({ ...this.targetRelay, color: this.targetRelay.mode === 'demolition' ? '#ffc18a' : this.targetRelay.mode === 'escort' ? '#ace8ff' : this.targetRelay.mode === 'conduction' ? '#c4c7ff' : this.targetRelay.status === 'charging' ? '#a4ece2' : '#f0d596', label: this.targetRelay.name || (this.targetRelay.mode === 'escort' ? '护送运输车' : this.targetRelay.mode === 'demolition' ? '拆毁反应堆' : this.targetRelay.mode === 'conduction' ? '引雷充能' : '追踪信标') });
-      if (boss && !game.voyage && !game.salvage) targets.push({ ...boss, color: boss.color || '#ffabbf', label: boss.name || game.map?.boss?.name || '裂隙守卫', boss: true });
+      if (boss && !game.voyage && !game.salvage && !game.siege) targets.push({ ...boss, color: boss.color || '#ffabbf', label: boss.name || game.map?.boss?.name || '裂隙守卫', boss: true });
       if (boss?.variant === 'nexus' && boss.shielded) {
         const anchor = game.enemies.filter(e => e.type === 'anchor' && e.hp > 0 && e.anchorBossId === boss.id)
           .sort((a, b) => Math.hypot(a.x - game.player.x, a.y - game.player.y) - Math.hypot(b.x - game.player.x, b.y - game.player.y))[0];
@@ -2908,7 +3053,7 @@
           if (below <= bottomLimit && (this.width <= 760 || below - sy < 115)) sy = Math.max(sy, below);
           else sx = Math.max(96, this.pointerHud.right - 95);
         }
-        if (target.voyage || target.salvage || target.delivery || target.type === 'anchor' || target.variant === 'nexus') {
+        if (target.voyage || target.salvage || target.siege || target.delivery || target.type === 'anchor' || target.variant === 'nexus') {
           const position = this.nexusPointerPosition(sx, sy);
           if (!position) continue;
           sx = position.x; sy = position.y;
@@ -3063,7 +3208,7 @@
       const ctx = canvas.getContext('2d'), world = game.world || this.world;
       const foundry = game.map?.id === 'foundry', frost = game.map?.id === 'frost', storm = game.map?.id === 'storm', nexus = game.map?.id === 'nexus', ruins = game.map?.id === 'ruins';
       const voyage = game.voyage;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.fillStyle = game.salvage ? '#26373b' : voyage ? { cosmos: '#242a40', forge: '#332e2e', tide: '#213b3d' }[voyage.room.biome] : foundry ? '#252a30' : frost ? '#224152' : storm ? '#282d42' : nexus ? '#222638' : ruins ? '#293b2e' : '#15282d'; ctx.fillRect(0, 0, width, height);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.fillStyle = game.siege ? '#292e35' : game.salvage ? '#26373b' : voyage ? { cosmos: '#242a40', forge: '#332e2e', tide: '#213b3d' }[voyage.room.biome] : foundry ? '#252a30' : frost ? '#224152' : storm ? '#282d42' : nexus ? '#222638' : ruins ? '#293b2e' : '#15282d'; ctx.fillRect(0, 0, width, height);
       const scale = Math.min((width - 14) / world.width, (height - 14) / world.height);
       const ox = (width - world.width * scale) / 2, oy = (height - world.height * scale) / 2;
       const detailed = options.detailed ?? width > 360;
@@ -3162,12 +3307,25 @@
       }
       if (game.salvage) this.drawSalvageMinimap(ctx, game, scale, detailed, { left: 4 - ox, right: width - ox - 4, top: 4 - oy, bottom: height - oy - 4 });
       const spawn = game.spawn || this.spawn;
-      if (detailed && spawn && !voyage && !game.salvage) {
+      if (detailed && spawn && !voyage && !game.salvage && !game.siege) {
         ctx.font = '10px "Microsoft YaHei", sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#b9d8b2';
         circle(ctx, spawn.x * scale, spawn.y * scale, 5, null, '#b9d8b2', 1);
         ctx.fillText(foundry ? '工厂入口' : frost ? '极地营地' : storm ? '废港营地' : nexus ? '跃迁入口' : '着陆营地', spawn.x * scale, spawn.y * scale + 19);
       }
+      for (const wreck of game.siege?.wrecks || []) {
+        const x = wreck.x * scale, y = wreck.y * scale, color = wreck.status === 'captured' ? siegeColors.captured : wreck.status === 'spent' ? '#718185' : siegeColors[wreck.kind], size = detailed ? 7 : 4;
+        box(ctx, x - size, y - size, size * 2, size * 2, 1, '#24323a', color);
+        for (let index = 0; index < wreck.ammo; index++) { ctx.fillStyle = color; ctx.fillRect(x - 5 + index * 4, y + size + 2, 2, 3); }
+        if (game.siegeTarget()?.id === wreck.id) circle(ctx, x, y, size + 4, null, '#d7fff0', 1.5);
+      }
       for (const e of game.enemies || []) {
+        if (game.siege && (e.siegePart || e.variant === 'siege')) {
+          if (e.hp <= 0) continue;
+          const x = e.x * scale, y = e.y * scale, part = !!e.siegePart, color = part ? siegeColors[e.siegePart] : e.stage === 3 ? '#ff7d93' : siegeColors.core;
+          polygon(ctx, x, y, detailed ? part ? 6 : 11 : part ? 3 : 6, part ? 4 : 8, Math.PI / 4); ctx.fillStyle = color; ctx.fill();
+          if (!part && e.shielded) circle(ctx, x, y, detailed ? 15 : 9, null, '#afbbb5', 1.5);
+          continue;
+        }
         if (e.type === 'anchor' && e.hp > 0) {
           polygon(ctx, e.x * scale, e.y * scale, detailed ? 5 : 3, 4); ctx.fillStyle = '#c6baff'; ctx.fill();
           if (detailed) { ctx.font = '600 11px "Microsoft YaHei", sans-serif'; ctx.textAlign = 'center'; ctx.fillText('能量锚', e.x * scale, e.y * scale + 17); }

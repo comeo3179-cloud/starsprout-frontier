@@ -11,7 +11,8 @@
     'voyage-cosmos': { shift: 7, offset: 0, lead: 'sine', bassEvery: 2 },
     'voyage-forge': { shift: -5, offset: 4, lead: 'triangle', bassEvery: 2 },
     'voyage-tide': { shift: 2, offset: 8, lead: 'sine', bassEvery: 4 },
-    salvage: { shift: -2, offset: 2, lead: 'sine', bassEvery: 4 }
+    salvage: { shift: -2, offset: 2, lead: 'sine', bassEvery: 4 },
+    siege: { shift: -7, offset: 6, lead: 'triangle', bassEvery: 2 }
   };
   class FrontierAudio {
     constructor() {
@@ -145,6 +146,12 @@
         if (spacing && this.context.currentTime - (this.lastPlayed[kind] ?? -Infinity) < spacing) return;
         this.lastPlayed[kind] = this.context.currentTime;
         switch (kind) {
+          case 'siege-start': this.note(98, 196, .28, .045, 'triangle'); break;
+          case 'siege-part-break': this.noiseBurst(950, .15, .08); this.note(220, 80, .22, .06, 'triangle'); break;
+          case 'siege-capture': this.note(392, 784, .14, .03, 'sine'); this.note(988, 988, .16, .025, 'sine', .07); break;
+          case 'siege-turret-shot': this.noiseBurst(450, .12, .08); this.note(110, 40, .22, .07, 'triangle'); break;
+          case 'siege-redirect': this.note(240, 960, .13, .035, 'sine'); break;
+          case 'siege-armor-break': this.noiseBurst(850, .16, .065); this.note(165, 330, .26, .035, 'triangle'); break;
           case 'salvage-start': this.note(196, 392, .28, .03, 'sine'); this.note(587, 784, .16, .02, 'sine', .11); break;
           case 'salvage-comms-start': case 'salvage-source-start': this.note(130, 195, .22, .035, 'triangle'); this.note(390, 260, .16, .025, 'sine', .09); break;
           case 'salvage-source-open': this.noiseBurst(weapon === 'drone' ? 2600 : 1300, .1, .045); this.note(weapon === 'drone' ? 620 : 260, 130, .15, .03, 'triangle'); break;

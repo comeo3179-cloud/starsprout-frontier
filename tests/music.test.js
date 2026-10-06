@@ -143,3 +143,14 @@ test('evacuation, alarm and EMP field chains share the existing voice cap and cl
   }
   f.audio.setEnabled(false); f.tick(1000); assert.equal(f.timers.size, 0); assert.equal(f.audio.musicVoices.size, 0); assert.equal(f.audio.voices, 0);
 });
+
+test('siege effects sound individually and keep one bounded music scheduler', () => {
+  const f = fixture(); f.audio.setScene('boss', 'siege'); f.audio.play('click');
+  for (const kind of ['siege-start', 'siege-part-break', 'siege-capture', 'siege-turret-shot', 'siege-redirect', 'siege-armor-break']) {
+    f.tick(400);
+    const before = f.audio.context.nodes.length; f.audio.play(kind);
+    assert.ok(f.audio.context.nodes.length > before, kind);
+    assert.equal(f.timers.size, 1); assert.ok(f.audio.voices <= 48 && f.audio.musicVoices.size <= 12);
+  }
+  f.audio.setEnabled(false); f.tick(1000); assert.equal(f.audio.voices, 0); assert.equal(f.timers.size, 0);
+});
