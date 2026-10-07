@@ -695,12 +695,18 @@ body{-webkit-font-smoothing:antialiased}
 @media(pointer:coarse) and (orientation:landscape){
   .camp-mode-grid #siege-entry{grid-column:auto}
   .camp-mode-grid .campaign-entry-mark,.camp-mode-grid .trial-entry-symbol{font-size:18px;line-height:1.1}
+  .game-stage.siege-mode .field-coach{top:calc(var(--safe-top) + 34px);right:calc(var(--safe-right) + 216px)}
+  .game-stage.siege-mode:has(.field-coach:not(.hidden)) .objective-hud.collapsed{visibility:hidden}
   .welcome .sector-brief{justify-content:center}
   .welcome .screen-kicker{margin-bottom:6px}
   .welcome .screen-description{margin-bottom:8px}
   .welcome .welcome-controls{margin-top:10px}
 }
 @media(pointer:coarse) and (orientation:landscape) and (max-width:600px){
+  .game-stage.siege-mode .field-coach{left:calc(var(--safe-left) + 166px);right:calc(var(--safe-right) + 244px)}
+  .game-stage:has(.field-coach:not(.hidden)) .objective-hud.collapsed{visibility:hidden}
+  .game-stage:has(.objective-hud:not(.collapsed)) .field-coach{display:none}
   .objective-hud{left:calc(var(--safe-left) + 166px);right:calc(var(--safe-right) + 244px);top:calc(var(--safe-top) + 40px);width:auto;padding:3px 6px}
+  .game-stage:is(:fullscreen,.immersive) .objective-hud{top:calc(var(--safe-top) + 60px)}
   .objective-hud.collapsed>.objective-top>span,.objective-hud.collapsed>p{display:none}
 }

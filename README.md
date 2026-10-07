@@ -2,7 +2,7 @@
 
 俯视角射击与探索生存游戏：手动走位、瞄准与射击，在撤离风险和继续探索之间作出选择。
 
-[在线试玩](https://starsprout-playtest-d7bqa2fc8da1-1494842646.tcloudbaseapp.com/?v=8.1.0) · [更新记录](CHANGELOG.md) · [创作参考](REFERENCES.md)
+[在线试玩](https://starsprout-playtest-d7bqa2fc8da1-1494842646.tcloudbaseapp.com/?v=8.1.1) · [更新记录](CHANGELOG.md) · [创作参考](REFERENCES.md)
 
 ## 当前内容
 
