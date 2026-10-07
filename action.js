@@ -347,14 +347,14 @@
     const button = $('display-mode-button');
     if (button) { button.textContent = label; button.disabled = display.busy && !display.active; }
     const hint = $('display-mode-hint');
-    if (hint) hint.textContent = display.portrait ? '请横置手机；若未旋转，先关闭系统的竖屏锁定或开启自动旋转。' : '左手持续移动，右手可换弹、换枪和释放技能。';
+    if (hint) hint.textContent = display.portrait ? '横置手机；开启自动旋转。' : '支持边走边换弹、换枪。';
     $('fullscreen-toggle').setAttribute('aria-label', label);
     $('fullscreen-toggle').setAttribute('aria-pressed', String(display.active));
     $('fullscreen-exit').textContent = display.native ? '退出全屏' : '退出沉浸';
     renderer.resize(); renderDirty = hudDirty = pointer.dirty = true;
   }
   function welcome() {
-    showScreen('welcome', '<div class="screen-kicker">STARSPROUT / 荒原行动 · 8.0.0</div><h1 id="screen-title">选择战场，<em>把威胁变成武器。</em></h1><p class="screen-description">探索、构筑、回收。选择你的下一站。</p><div class="sector-grid">' + Expedition.MAPS.map((map, index) => '<button class="sector-card ' + (map.id === game.map.id ? 'selected' : '') + '" data-map="' + map.id + '" aria-pressed="' + (map.id === game.map.id) + '" style="--sector-color:' + map.color + '"><small>SECTOR 0' + (index + 1) + (map.id === 'ruins' ? ' / NEW · 归星行动' : ' / 单区行动') + '</small><span class="sector-symbol">' + ['✳', '▧', '❄', 'ϟ', '◇'][index] + '</span><b>' + map.name + '</b><span>' + map.subtitle + '</span><p>' + map.description + '</p></button>').join('') + '</div><div class="sector-brief"><b>本图目标</b><p>' + game.map.description + '</p></div><button class="launch-button" id="start-run">进入' + game.map.name + ' <b>↗</b></button><details class="peek-details" id="sector-help"><summary>ⓘ 地图说明</summary><p>' + game.map.briefing + '</p><p><b>' + game.map.threat.name + '</b> · ' + game.map.threat.description + '</p><p>首领 · ' + game.map.boss.name + '</p></details><div class="welcome-controls"><span><kbd>W A S D</kbd>移动探索</span><span><kbd>1 — 6</kbd>切换武器</span><span><kbd>SHIFT / 空格</kbd>相位冲刺</span><span><kbd>F</kbd>星核暴走</span></div>');
+    showScreen('welcome', '<div class="screen-kicker">STARSPROUT / 荒原行动 · 8.1.0</div><h1 id="screen-title">选择战场，<em>即刻出发。</em></h1><p class="screen-description">探索 · 构筑 · 回收</p><div class="sector-grid">' + Expedition.MAPS.map((map, index) => '<button class="sector-card ' + (map.id === game.map.id ? 'selected' : '') + '" data-map="' + map.id + '" aria-pressed="' + (map.id === game.map.id) + '" style="--sector-color:' + map.color + '"><small>SECTOR 0' + (index + 1) + (map.id === 'ruins' ? ' / NEW · 归星行动' : ' / 单区行动') + '</small><span class="sector-symbol">' + ['✳', '▧', '❄', 'ϟ', '◇'][index] + '</span><b>' + map.name + '</b><span>' + map.subtitle + '</span><p>' + map.description + '</p></button>').join('') + '</div><div class="sector-brief"><b>本图目标</b><p>' + game.map.description + '</p></div><button class="launch-button" id="start-run">进入' + game.map.name + ' <b>↗</b></button><details class="peek-details" id="sector-help"><summary>ⓘ 地图说明</summary><p>' + game.map.briefing + '</p><p><b>' + game.map.threat.name + '</b> · ' + game.map.threat.description + '</p><p>首领 · ' + game.map.boss.name + '</p></details><div class="welcome-controls"><span><kbd>W A S D</kbd>移动探索</span><span><kbd>1 — 6</kbd>切换武器</span><span><kbd>SHIFT / 空格</kbd>相位冲刺</span><span><kbd>F</kbd>星核暴走</span></div>');
     $('start-run').addEventListener('click', startRun);
     $('screen-content').querySelectorAll('[data-map]').forEach(button => button.addEventListener('click', () => {
       resetRun(button.dataset.map); welcome(); tone('click');
@@ -424,7 +424,7 @@
     return '<details class="peek-details salvage-rules"><summary>ⓘ 猎场说明</summary><p><b>拆炮夺枪</b> 巨械的三门炮座可以分别击碎。残骸落地后用 EMP 接管，获得 3 发重火力；靠近残骸，瞄准后按 E / 点交互发射，间隔 1.2 秒。仍可移动和射击，炮弹会被岩石阻挡。</p><p><b>重弹反向</b> 主炮的慢速重弹进入 EMP 范围时，脉冲将它朝准星改向。两次重火力命中巨械可提前破甲；打空不会计数。普通枪弹始终能造成伤害，即使残骸弹量耗尽也能通关。</p><p><b>三阶段</b> 武装期先拆威胁最大的炮座；生命降到 60% 自动裸露核心，25% 进入过载。预警锁定后侧移，穿过环弹缺口，避开旧位置爆圈；攻击后的恢复窗口适合集中火力。</p><p>入场套装仅本局生效，所有武器仍可切换。地图与菜单期间战斗暂停；同种子再战保留套装与难度，刷新结束本局。账号沿用个人成就与纪录，不保存进行中的猎场。</p></details>';
   }
   function showSiegeIntro(difficulty = 'normal', seedValue = '', loadoutId = 'free') {
-    showScreen('siege-intro', '<div class="screen-kicker">8.0 / COLOSSUS HUNT</div><h2 id="screen-title">拆下它的武器，<em>亲手结束它。</em></h2><p class="salvage-intro-note">移动巨械 · 三种可夺炮座 · 三阶段决战</p><div class="salvage-difficulties" role="group" aria-label="入场套装">' + Expedition.SALVAGE_LOADOUTS.map(loadout => '<button class="campaign-choice" data-siege-loadout="' + loadout.id + '" aria-pressed="false"><b>' + loadout.title + '</b><small>' + weapons[loadout.weapon].name + '</small></button>').join('') + '</div><div class="salvage-difficulties" role="group" aria-label="猎场难度"><button class="campaign-choice" data-siege-difficulty="normal" aria-pressed="false"><b>普通猎场</b><small>标准强度</small></button><button class="campaign-choice" data-siege-difficulty="overload" aria-pressed="false"><b>过载猎场</b><small>耐久 +20% · 伤害 +12%</small></button></div><label class="salvage-seed-label" for="siege-seed">战场种子 <small>选填</small><input id="siege-seed" inputmode="numeric" maxlength="10" placeholder="留空生成新猎场" autocomplete="off"></label><p id="siege-selection" class="salvage-selection" aria-live="polite"></p><div class="menu-buttons"><button class="launch-button" id="start-siege">出击 · 巨械猎场 <b>↗</b></button><button class="secondary-button" id="close-siege-intro">返回营地</button></div>' + siegeRules());
+    showScreen('siege-intro', '<div class="screen-kicker">8.0 / COLOSSUS HUNT</div><h2 id="screen-title">拆下它的武器，<em>亲手结束它。</em></h2><p class="salvage-intro-note">移动巨械 · 三种可夺炮座 · 三阶段决战</p><div class="salvage-difficulties" role="group" aria-label="入场套装">' + Expedition.SALVAGE_LOADOUTS.map(loadout => '<button class="campaign-choice" data-siege-loadout="' + loadout.id + '" aria-pressed="false"><b>' + loadout.title + '</b><small>' + weapons[loadout.weapon].name + '</small></button>').join('') + '</div><div class="salvage-difficulties" role="group" aria-label="猎场难度"><button class="campaign-choice" data-siege-difficulty="normal" aria-pressed="false"><b>普通猎场</b><small>标准强度</small></button><button class="campaign-choice" data-siege-difficulty="overload" aria-pressed="false"><b>过载猎场</b><small>耐久 +20% · 伤害 +12%</small></button></div><label class="voyage-seed-label" for="siege-seed">战场种子 <small>选填</small><input id="siege-seed" inputmode="numeric" maxlength="10" placeholder="留空生成新猎场" autocomplete="off"></label><p id="siege-selection" class="salvage-selection" aria-live="polite"></p><div class="menu-buttons"><button class="launch-button" id="start-siege">出击 · 巨械猎场 <b>↗</b></button><button class="secondary-button" id="close-siege-intro">返回营地</button></div>' + siegeRules());
     const update = () => {
       selectChoice('siege-difficulty', difficulty); selectChoice('siege-loadout', loadoutId);
       $('siege-selection').textContent = (difficulty === 'overload' ? '过载' : '普通') + ' · ' + Expedition.SALVAGE_LOADOUTS.find(loadout => loadout.id === loadoutId).title;
@@ -792,7 +792,7 @@
     addEvolutionSummary($('screen-content').querySelector('.menu-buttons'));
     addDisplayEntry($('screen-content').querySelector('.menu-buttons'));
     if (game.siege) {
-      const rules = document.createElement('div'); rules.innerHTML = siegeRules(); $('screen-content').querySelector('.menu-buttons').before(rules);
+      const rules = document.createElement('div'); rules.innerHTML = siegeRules(); $('screen-content').querySelector('.menu-buttons').after(rules);
       const stats = $('screen-content').querySelectorAll('.result-grid strong'), labels = $('screen-content').querySelectorAll('.result-grid small');
       stats[2].textContent = game.siege.wrecks.length + '/3'; labels[2].textContent = '拆毁炮座';
       $('resume-run').innerHTML = '继续猎场 <b>↗</b>';
@@ -816,6 +816,11 @@
       summary.textContent = '警戒 ' + game.salvage.alertLevel + ' · 来源已取 ' + game.salvage.sources.filter(source => source.status === 'collected').length + '/5 · ' + salvageStateText();
       $('screen-content').querySelector('.result-grid').after(summary);
       $('resume-run').innerHTML = '继续回收 <b>↗</b>';
+    }
+    for (const [selector, label] of [['.result-tip', '本局强化'], ['.tactic-summary:not(.evolution-summary)', '战术模块'], ['.evolution-summary', '武器进化'], ['.campaign-carried', '远航构筑']]) {
+      if (!$('screen-content').querySelector(selector)) continue;
+      foldNote(selector, label);
+      $('screen-content').append($('screen-content').querySelector(selector).closest('details'));
     }
   }
   function resume() { paused = false; closeScreen(); }

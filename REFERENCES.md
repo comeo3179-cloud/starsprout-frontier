@@ -33,6 +33,10 @@ Flare 仓库说明：[引擎](https://github.com/flareteam/flare-engine)采用 G
 
 查阅日期：2026-09-23。以下是本次原型的玩法研究来源；没有以销量、热度排名或完整市场调研作为设计依据。
 
+## 界面布局参考
+
+- [shadcn/ui Button 源码](https://github.com/shadcn-ui/ui/blob/main/apps/v4/registry/bases/base/ui/button.tsx)：参考图标与标签居中、按钮状态统一的组织方式。8.1 使用原生 CSS 独立实现，主按钮另将装饰箭头移出排版，确保文字本身居中；不引入 React、组件库或外部字体。
+
 ## 商业游戏参考
 
 | 来源 | 核实的玩法特征 | 本作借鉴与变化 |
