@@ -101,6 +101,9 @@
     showScreen('account', ''); accountPanel.open($('screen-content'));
   }
   function setText(id, value) { value = String(value); if (textValues.get(id) !== value) { $(id).textContent = value; textValues.set(id, value); } }
+  function setNodeText(node, value) { value = String(value); if (node.textContent !== value) node.textContent = value; }
+  function setDisabled(node, value) { value = !!value; if (node.disabled !== value) node.disabled = value; }
+  function setNodeAttribute(node, name, value) { value = String(value); if (node.getAttribute(name) !== value) node.setAttribute(name, value); }
   function selectChoice(attribute, value) {
     $('screen-content').querySelectorAll('[data-' + attribute + ']').forEach(button => {
       const selected = button.getAttribute('data-' + attribute) === value;
@@ -1173,13 +1176,14 @@
     const rift = game.encounters.find(item => ['active', 'ready'].includes(item.status) || (item.id === trackedEncounterId && item.status === 'idle'));
     const text = coachStep === 0 ? coarse ? '拖动左摇杆移动，再拖动右摇杆瞄准射击' : 'WASD 移动，鼠标瞄准并按住左键射击' : coachStep === 1 ? coarse ? '点冲刺避开攻击；掠过敌人可留下紫色印记' : 'Shift 冲刺避开攻击；掠过敌人可留下紫色印记' : coarse ? '点装填开始换弹，进入绿色区再点一次' : 'R 开始换弹，进入绿色区再按 R，完成精准装填';
     if (!coachDismissed && (coachStep === 3 || game.relays.some(relay => ['charging', 'active', 'complete'].includes(relay.status)) || game.salvage?.sources.some(source => ['drilling', 'open', 'collected'].includes(source.status) || source.quietTimer > 0))) { coachDismissed = true; profiles.recordCoach(); }
-    $('field-coach').setAttribute('data-step', String(coachStep));
+    setNodeAttribute($('field-coach'), 'data-step', String(coachStep));
     $('field-coach').classList.toggle('hidden', Boolean(game.mode === 'trial' || coachDismissed || !canPlay() || (game.bossSpawned && !game.siege) || (rift && rift.status !== 'idle')));
     setText('coach-text', text);
   }
 
   function updateHUD() {
     hudDirty = false;
+    let missionText, healthText, weaponText, skillText, relayText, objectiveText, trackedText, sectorText, bossText;
     const player = game.player, weapon = weapons[player.weapon];
     const campaign = game.campaign, doctrine = campaign ? Expedition.CAMPAIGN_DOCTRINES.find(item => item.id === campaign.doctrineId) : null;
     const crisis = campaign ? Expedition.CAMPAIGN_CRISES.find(item => item.id === campaign.crisisId) : null;
@@ -1192,10 +1196,10 @@
     stage.classList.toggle('overdrive-active', overdrive);
     $('reactor-button').classList.toggle('ready', charged && !overdrive);
     $('reactor-button').classList.toggle('active', overdrive);
-    $('reactor-button').disabled = !canPlay() || !charged || overdrive;
+    setDisabled($('reactor-button'), !canPlay() || !charged || overdrive);
     $('touch-overdrive').classList.toggle('hidden', !canPlay() || (!charged && !overdrive));
-    $('touch-overdrive').disabled = overdrive || !canPlay();
-    $('touch-overdrive').textContent = overdrive ? '暴走 ' + reactor.timer.toFixed(1) + 's' : '✳ 星核暴走';
+    setDisabled($('touch-overdrive'), overdrive || !canPlay());
+    setText('touch-overdrive', overdrive ? '暴走 ' + reactor.timer.toFixed(1) + 's' : '✳ 星核暴走');
     setText('reactor-label', overdrive ? '暴走 ' + reactor.timer.toFixed(1) + 's' : charged ? '星核就绪 · 点此释放' : '星核暴走');
     setText('reactor-charge', overdrive ? '∞' : Math.floor(reactor.charge) + '%');
     percentage('reactor-progress', overdrive ? reactor.timer / reactor.duration : reactor.charge / reactor.maxCharge);
@@ -1208,16 +1212,16 @@
     setText('credits', player.credits); setText('best-score', Math.max(best, game.score));
     $('credits').parentElement.classList.toggle('hidden', game.mode === 'trial');
     document.querySelector('.mission-numbers .best').classList.toggle('hidden', game.mode === 'trial');
-    setText('mission-state', activeRevelation ? '回响显现 · ' + (activeRevelation.revisited ? '重温领悟' : '首次领悟') : paused ? '行动暂停' : ({ ready: campaign ? '连续远征准备' : '远征准备', playing: game.mode === 'trial' ? '裂隙试炼 · 第 ' + game.trial.wave + ' 波' : campaign ? '远征 ' + campaign.stage + '/3 · ' + doctrine.title : '行动进行中', upgrade: '生长协议', relic: '遗迹奖励', 'trial-reward': '波间整备', 'campaign-rest': '战区肃清 · 安全整备', tactic: '裂隙回收 · 选择战术', won: campaign ? '连续远征完成' : '任务完成', lost: '信号中断' }[game.phase]));
+    missionText = activeRevelation ? '回响显现 · ' + (activeRevelation.revisited ? '重温领悟' : '首次领悟') : paused ? '行动暂停' : ({ ready: campaign ? '连续远征准备' : '远征准备', playing: game.mode === 'trial' ? '裂隙试炼 · 第 ' + game.trial.wave + ' 波' : campaign ? '远征 ' + campaign.stage + '/3 · ' + doctrine.title : '行动进行中', upgrade: '生长协议', relic: '遗迹奖励', 'trial-reward': '波间整备', 'campaign-rest': '战区肃清 · 安全整备', tactic: '裂隙回收 · 选择战术', won: campaign ? '连续远征完成' : '任务完成', lost: '信号中断' }[game.phase]);
     setText('player-level', player.level); setText('health-number', Math.ceil(player.hp) + ' / ' + player.maxHp);
-    setText('health-label', player.slowTimer > 0 ? '冰缓 ' + player.slowTimer.toFixed(1) + 's' : campaign ? '生命 · ' + campaign.stage + '/3' : '生命');
+    healthText = player.slowTimer > 0 ? '冰缓 ' + player.slowTimer.toFixed(1) + 's' : campaign ? '生命 · ' + campaign.stage + '/3' : '生命';
     $('health-label').classList.toggle('slowed', player.slowTimer > 0);
     percentage('health-progress', player.hp / player.maxHp); $('health-progress').style.background = player.hp < player.maxHp * .3 ? '#ee8ca5' : '';
     setText('xp-label', '经验 ' + Math.floor(player.xp) + ' / ' + player.xpNeeded); percentage('xp-progress', player.xp / player.xpNeeded);
-    setText('ammo-current', overdrive ? '∞' : String(player.ammo).padStart(2, '0')); setText('ammo-max', player.magSize); setText('weapon-name', overdrive ? weaponName + ' · 无限火力' : weaponName);
+    setText('ammo-current', overdrive ? '∞' : String(player.ammo).padStart(2, '0')); setText('ammo-max', player.magSize); weaponText = overdrive ? weaponName + ' · 无限火力' : weaponName;
     const breachReady = game.evolutionState.breachTimer > 0 && player.weapon === 1 && player.reversalAmmo <= 0;
     $('weapon-name').classList.toggle('breach-ready', breachReady);
-    if (breachReady) setText('weapon-name', '重弹\n' + game.evolutionState.breachTimer.toFixed(1) + 's');
+    if (breachReady) weaponText = '重弹\n' + game.evolutionState.breachTimer.toFixed(1) + 's';
     const coarse = window.matchMedia('(pointer: coarse)').matches;
     setText('reload-label', player.reloadTimer > 0 ? (player.reloadAttempted ? '装填中 ' : coarse ? '再点装填 · ' : '再按 R · ') + player.reloadTimer.toFixed(1) + 's' : player.overcharged ? '强化弹匣 +' + (game.campaign?.doctrineId === 'marksman' ? '50' : '15') + '%' : player.ammo === 0 ? coarse ? '点此装填' : '按 R 装填' : '装填弹药');
     setText('field-map-toggle', coarse ? '地图 ↗' : 'M · 战术地图 ↗');
@@ -1226,40 +1230,40 @@
     updateDashControl();
     const pulseCharging = game.awakeningState?.charge;
     const skillTarget = player.skillCooldown <= 0 || pulseCharging ? game.skillTarget?.() : null;
-    setText('skill-label', pulseCharging ? '再按释放' : player.skillCooldown > 0 ? Math.ceil(player.skillCooldown) + 's' : campaign?.awakeningId === 'charged-pulse' ? '蓄势脉冲' : skillTarget?.remote ? '投送遥爆' : game.tacticId === 'gravity-pulse' ? '引力脉冲' : '脉冲震荡');
-    $('skill-button').setAttribute('aria-label', pulseCharging ? '脉冲蓄能中，再按提前释放；蓄满自动强化释放' : campaign?.awakeningId === 'charged-pulse' ? '开始蓄能，0.9秒蓄满；再按提前释放' : skillTarget?.remote ? '投送到锁定榴弹；本次身边不释放脉冲' : game.tacticId === 'gravity-pulse' ? '引力脉冲，清除附近敌弹并聚拢普通敌人' : '脉冲震荡，清除附近敌弹');
-    if (player.reversalAmmo > 0) setText('weapon-name', weaponName + ' · 逆流 ' + player.reversalAmmo);
+    skillText = pulseCharging ? '再按释放' : player.skillCooldown > 0 ? Math.ceil(player.skillCooldown) + 's' : campaign?.awakeningId === 'charged-pulse' ? '蓄势脉冲' : skillTarget?.remote ? '投送遥爆' : game.tacticId === 'gravity-pulse' ? '引力脉冲' : '脉冲震荡';
+    let skillAria = pulseCharging ? '脉冲蓄能中，再按提前释放；蓄满自动强化释放' : campaign?.awakeningId === 'charged-pulse' ? '开始蓄能，0.9秒蓄满；再按提前释放' : skillTarget?.remote ? '投送到锁定榴弹；本次身边不释放脉冲' : game.tacticId === 'gravity-pulse' ? '引力脉冲，清除附近敌弹并聚拢普通敌人' : '脉冲震荡，清除附近敌弹';
+    if (player.reversalAmmo > 0) weaponText = weaponName + ' · 逆流 ' + player.reversalAmmo;
     $('dash-cooldown').style.height = player.dashCooldown / player.dashCooldownMax * 100 + '%';
     $('skill-cooldown').style.height = (pulseCharging ? pulseCharging.remaining / pulseCharging.duration : player.skillCooldown / player.skillCooldownMax) * 100 + '%';
     const locked = !canPlay();
-    $('skill-button').disabled = locked || (player.skillCooldown > 0 && !pulseCharging);
-    $('reload-button').disabled = locked || (player.reloadTimer > 0 ? !!player.reloadAttempted : player.ammo === player.magSize);
+    let skillDisabled = locked || (player.skillCooldown > 0 && !pulseCharging);
+    setDisabled($('reload-button'), locked || (player.reloadTimer > 0 ? !!player.reloadAttempted : player.ammo === player.magSize));
     const weaponNotes = [player.arcRounds ? 'ϟ 电弧连锁' : '稳定 · 全距离', player.repulsorRounds ? '» 震荡击退' : '爆发 · 近距离', player.shatterRounds ? '✧ 命中裂解' : '贯穿 · 成群目标', '虚线爆点 · 范围清场', '去返 · 走位切割', '两钉成线 · 截击追兵'];
     document.querySelectorAll('[data-weapon]').forEach(button => {
       const index = Number(button.dataset.weapon), evolved = evolution?.weapon === index;
-      button.classList.toggle('active', index === player.weapon); button.classList.toggle('evolved', evolved); button.disabled = locked;
-      button.setAttribute('aria-pressed', index === player.weapon ? 'true' : 'false');
-      button.setAttribute('aria-label', evolved ? evolution.title + '，' + evolution.playHint : weapons[index].name);
-      button.title = evolved ? evolution.description : weapons[index].description;
-      button.querySelector('span').textContent = evolved ? evolution.title : weapons[index].name;
-      button.querySelector('small').textContent = evolved ? '✧ 已进化' : weaponNotes[index];
+      button.classList.toggle('active', index === player.weapon); button.classList.toggle('evolved', evolved); setDisabled(button, locked);
+      setNodeAttribute(button, 'aria-pressed', index === player.weapon ? 'true' : 'false');
+      setNodeAttribute(button, 'aria-label', evolved ? evolution.title + '，' + evolution.playHint : weapons[index].name);
+      setNodeAttribute(button, 'title', evolved ? evolution.description : weapons[index].description);
+      setNodeText(button.querySelector('span'), evolved ? evolution.title : weapons[index].name);
+      setNodeText(button.querySelector('small'), evolved ? '✧ 已进化' : weaponNotes[index]);
     });
     if (visibleWeapon !== player.weapon) { visibleWeapon = player.weapon; keepWeaponVisible(); }
-    setText('relay-count', nexus ? '终章' : game.completedRelays + ' / 3'); setText('objective-text', game.currentObjective);
+    relayText = nexus ? '终章' : game.completedRelays + ' / 3'; objectiveText = game.currentObjective;
     setText('zone-label', game.map.name);
     let tracked = game.relays.find(relay => relay.id === trackedRelayId && !['active', 'locked'].includes(relay.status));
     if (!tracked) { tracked = game.relays.filter(relay => !['active', 'locked'].includes(relay.status)).sort((a, b) => Math.hypot(a.x - player.x, a.y - player.y) - Math.hypot(b.x - player.x, b.y - player.y))[0]; trackedRelayId = tracked?.id ?? null; }
     renderer.trackedRelayId = trackedRelayId;
     const deliveryTarget = game.deliveryTarget?.(tracked);
-    setText('tracked-target', deliveryTarget ? deliveryTarget.label + ' · ' + Math.round(Math.hypot(deliveryTarget.x - player.x, deliveryTarget.y - player.y) / 10) + ' m' : tracked ? (tracked.name.split(' · ')[1] || tracked.name) + ' · ' + Math.round(Math.hypot(tracked.x - player.x, tracked.y - player.y) / 10) + ' m' : nexus ? anchors ? '剩余能量锚 · ' + anchors + '/2' : '最终首领 · ' + game.map.boss.name : '主线完成 · 击败守卫');
+    trackedText = deliveryTarget ? deliveryTarget.label + ' · ' + Math.round(Math.hypot(deliveryTarget.x - player.x, deliveryTarget.y - player.y) / 10) + ' m' : tracked ? (tracked.name.split(' · ')[1] || tracked.name) + ' · ' + Math.round(Math.hypot(tracked.x - player.x, tracked.y - player.y) / 10) + ' m' : nexus ? anchors ? '剩余能量锚 · ' + anchors + '/2' : '最终首领 · ' + game.map.boss.name : '主线完成 · 击败守卫';
     const contract = game.contracts.find(item => item.id === trackedContractId && item.status !== 'complete');
     if (!contract) trackedContractId = null;
     renderer.trackedContractId = trackedContractId;
     if (contract) {
       const target = game.contractTarget(contract);
       const action = contract.status === 'ready' ? '返回领奖' : contract.status === 'active' ? (contract.kind === 'salvage' ? '回收核心 ' : '清除目标 ') + contract.progress + '/' + contract.goal : '靠近终端接取';
-      setText('objective-text', '支线 · ' + contract.name + ' · ' + action);
-      setText('tracked-target', action + ' · ' + Math.round(Math.hypot(target.x - player.x, target.y - player.y) / 10) + ' m');
+      objectiveText = '支线 · ' + contract.name + ' · ' + action;
+      trackedText = action + ' · ' + Math.round(Math.hypot(target.x - player.x, target.y - player.y) / 10) + ' m';
     }
     const activeEncounter = game.encounters.find(item => item.status === 'active');
     const encounter = game.encounters.find(item => item.id === trackedEncounterId && !['complete', 'failed'].includes(item.status));
@@ -1268,11 +1272,11 @@
     if (encounter) {
       const target = game.encounterTarget(encounter);
       const action = encounter.status === 'ready' ? '返回领奖' : encounter.status === 'active' ? encounter.kind === 'race' ? '追光节点 ' + Math.min(encounter.goal, encounter.progress + 1) : encounter.kind === 'rings' ? '活跃环 ' + (encounter.activeNode + 1) : '清除守卫' : encounter.name;
-      setText('objective-text', encounter.name + ' · ' + encounterStatus(encounter));
-      setText('tracked-target', action + ' · ' + Math.round(Math.hypot(target.x - player.x, target.y - player.y) / 10) + ' m');
+      objectiveText = encounter.name + ' · ' + encounterStatus(encounter);
+      trackedText = action + ' · ' + Math.round(Math.hypot(target.x - player.x, target.y - player.y) / 10) + ' m';
     }
     const relayNames = game.relays.map((relay, index) => '0' + (index + 1) + ' ' + (relay.name.split(' · ')[1] || relay.name).slice(0, 4));
-    [...$('relay-indicators').children].forEach((element, index) => { element.textContent = relayNames[index] || ''; element.classList.toggle('active', game.relays[index]?.status === 'active'); element.classList.toggle('charging', game.relays[index]?.status === 'charging'); });
+    [...$('relay-indicators').children].forEach((element, index) => { setNodeText(element, relayNames[index] || ''); element.classList.toggle('active', game.relays[index]?.status === 'active'); element.classList.toggle('charging', game.relays[index]?.status === 'charging'); });
     $('relay-indicators').classList.toggle('hidden', game.mode === 'trial' || game.mode === 'voyage' || game.mode === 'salvage' || game.map.id === 'nexus');
     const charging = game.relays.find(relay => relay.status === 'charging');
     $('relay-progress-wrap').classList.toggle('hidden', !charging);
@@ -1322,7 +1326,7 @@
     const boss = game.enemies.find(enemy => enemy.type === 'boss'); $('boss-hud').classList.toggle('hidden', !boss);
     if (boss) {
       percentage('boss-progress', boss.hp / boss.maxHp); setText('boss-phase', 'PHASE 0' + (boss.stage || 1));
-      setText('boss-name', boss.name || game.map.boss.name);
+      bossText = boss.name || game.map.boss.name;
       $('boss-hud').style.setProperty('--boss-color', boss.color || game.map.boss.color);
       $('boss-hud').classList.toggle('winding', boss.windup > 0);
       $('boss-hud').classList.toggle('exposed', boss.recoveryTimer > 0 && !boss.shielded);
@@ -1330,34 +1334,34 @@
     }
     const danger = game.hazards.filter(hazard => !hazard.friendly && (hazard.owner === 'environment' || hazard.voyageHazard) && hazard.remaining > 0).sort((a, b) => a.remaining - b.remaining)[0];
     $('sector-status').classList.toggle('warning', !!danger);
-    setText('sector-status', boss ? '终局作战 · 战区威胁已停止' : danger ? '⚠ ' + (danger.name || game.map.threat.name) + ' ' + danger.remaining.toFixed(1) + 's · ' + (danger.hint || '离开预警区') : crisis ? '危机 · ' + crisis.title + '：' + crisis.description : charging ? game.map.threat.name + ' · 留意地面预警' : '战区威胁 · ' + game.map.threat.name);
+    sectorText = boss ? '终局作战 · 战区威胁已停止' : danger ? '⚠ ' + (danger.name || game.map.threat.name) + ' ' + danger.remaining.toFixed(1) + 's · ' + (danger.hint || '离开预警区') : crisis ? '危机 · ' + crisis.title + '：' + crisis.description : charging ? game.map.threat.name + ' · 留意地面预警' : '战区威胁 · ' + game.map.threat.name;
     $('sector-status').style.setProperty('--threat-color', danger?.color || game.map.color);
     if (game.mode === 'trial') {
       const trial = game.trial;
-      setText('relay-count', trial.wave + ' / 6');
-      setText('objective-text', trial.title);
-      setText('tracked-target', trial.status === 'warning' ? '开波倒计时 · ' + Math.ceil(trial.countdown) + 's' : trial.status === 'combat' ? '剩余敌人 · ' + trial.remaining : trial.status === 'reward' ? '清场完成 · 选择整备' : '六波试炼完成');
-      if (!danger && !boss) setText('sector-status', trial.briefing);
+      relayText = trial.wave + ' / 6';
+      objectiveText = trial.title;
+      trackedText = trial.status === 'warning' ? '开波倒计时 · ' + Math.ceil(trial.countdown) + 's' : trial.status === 'combat' ? '剩余敌人 · ' + trial.remaining : trial.status === 'reward' ? '清场完成 · 选择整备' : '六波试炼完成';
+      if (!danger && !boss) sectorText = trial.briefing;
     }
     if (game.voyage) {
       const voyage = game.voyage, target = game.voyageTarget();
       stage.classList.toggle('voyage-final', voyage.node === 7);
-      setText('relay-count', voyage.node + ' / 7');
-      setText('mission-state', activeRevelation ? '回响显现' : paused ? '远航暂停' : game.phase === 'voyage-rest' ? '航段突破 · 安全整备' : game.phase === 'won' ? '七重星海已突破' : game.phase === 'lost' ? '远航信号中断' : game.phase === 'upgrade' ? '远航生长协议' : '远航 ' + voyage.node + '/7 · ' + (voyageObjectiveNames[voyage.room.type] || '终局'));
-      setText('health-label', player.slowTimer > 0 ? '冰缓 ' + player.slowTimer.toFixed(1) + 's' : '生命 · ' + voyage.node + '/7');
-      setText('objective-text', game.currentObjective);
-      setText('tracked-target', target ? target.label + ' · ' + Math.round(Math.hypot(target.x - player.x, target.y - player.y) / 10) + ' m' : '航界吞星者 · 留意地面预警');
-      if (!danger && !boss) setText('sector-status', target?.hint || game.map.briefing);
+      relayText = voyage.node + ' / 7';
+      missionText = activeRevelation ? '回响显现' : paused ? '远航暂停' : game.phase === 'voyage-rest' ? '航段突破 · 安全整备' : game.phase === 'won' ? '七重星海已突破' : game.phase === 'lost' ? '远航信号中断' : game.phase === 'upgrade' ? '远航生长协议' : '远航 ' + voyage.node + '/7 · ' + (voyageObjectiveNames[voyage.room.type] || '终局');
+      healthText = player.slowTimer > 0 ? '冰缓 ' + player.slowTimer.toFixed(1) + 's' : '生命 · ' + voyage.node + '/7';
+      objectiveText = game.currentObjective;
+      trackedText = target ? target.label + ' · ' + Math.round(Math.hypot(target.x - player.x, target.y - player.y) / 10) + ' m' : '航界吞星者 · 留意地面预警';
+      if (!danger && !boss) sectorText = target?.hint || game.map.briefing;
       if (boss && coarse) {
         const hints = { 'voyage-ring': '沿亮色缺口闪避', 'voyage-teleport': '远离虚线落点', 'voyage-collapse': '撤出锁定爆圈', 'voyage-lattice': '侧移离开光带', 'voyage-finale': '离光带，再撤出爆圈' };
-        setText('boss-name', boss.windup > 0 ? (hints[boss.attackKind] || '离开预警区') : boss.recoveryTimer > 0 ? '弱点暴露 · 集火' : '航界吞星者');
-        $('boss-hud').setAttribute('aria-label', '航界吞星者 · 阶段 ' + boss.stage + ' · ' + (boss.attackHint || game.map.boss.subtitle));
+        bossText = boss.windup > 0 ? (hints[boss.attackKind] || '离开预警区') : boss.recoveryTimer > 0 ? '弱点暴露 · 集火' : '航界吞星者';
+        setNodeAttribute($('boss-hud'), 'aria-label', '航界吞星者 · 阶段 ' + boss.stage + ' · ' + (boss.attackHint || game.map.boss.subtitle));
       }
       const action = game.voyageActionState();
       if (action.collapseReady) {
-        $('skill-button').disabled = !canPlay(); $('skill-cooldown').style.height = '0%';
-        setText('skill-label', '再点引爆 ' + action.remaining.toFixed(1) + 's');
-        $('skill-button').setAttribute('aria-label', '潮汐共鸣已就绪，再按 Q 或点此引爆引力井，原脉冲冷却保留');
+        skillDisabled = !canPlay(); $('skill-cooldown').style.height = '0%';
+        skillText = '再点引爆 ' + action.remaining.toFixed(1) + 's';
+        skillAria = '潮汐共鸣已就绪，再按 Q 或点此引爆引力井，原脉冲冷却保留';
       }
     } else { stage.classList.remove('voyage-final'); $('boss-hud').removeAttribute('aria-label'); }
     stage.classList.toggle('salvage-run', !!game.salvage);
@@ -1368,11 +1372,11 @@
       const comms = salvage.comms.status === 'linking' ? salvage.comms : null, work = drill || comms;
       const inside = !!work && Math.hypot(work.x - player.x, work.y - player.y) <= work.workRadius;
       const boarding = salvage.status === 'boarding';
-      setText('relay-count', '样本 ' + (salvage.carried || salvage.settled) + ' · ' + ['I', 'II', 'III', 'IV'][salvage.alertLevel - 1]);
-      setText('objective-text', salvage.status === 'approaching' ? '接应 ' + evac.remaining.toFixed(1) + 's · 可继续作战' : boarding ? '登舰 ' + evac.progress.toFixed(1) + '/3s · 进圈推进' : work ? (drill ? '钻探 ' : '架设 ') + work.progress.toFixed(1) + '/' + work.duration + 's · ' + (inside ? '正在推进' : '离圈暂停') : target ? target.label + ' · ' + Math.round(Math.hypot(target.x - player.x, target.y - player.y) / 10) + ' m' : salvageStateText());
-      setText('mission-state', activeRevelation ? '回响显现' : paused ? '回收暂停' : game.phase === 'upgrade' ? '回收生长协议' : game.phase === 'playing' ? game.map.name + ' · 警戒 ' + salvage.alertLevel : salvageStateText());
-      setText('tracked-target', target?.hint || salvageStateText());
-      if (!danger) setText('sector-status', '警戒 ' + salvage.alarm + '/100 · ' + (target?.hint || salvageStateText()));
+      relayText = '样本 ' + (salvage.carried || salvage.settled) + ' · ' + ['I', 'II', 'III', 'IV'][salvage.alertLevel - 1];
+      objectiveText = salvage.status === 'approaching' ? '接应 ' + evac.remaining.toFixed(1) + 's · 可继续作战' : boarding ? '登舰 ' + evac.progress.toFixed(1) + '/3s · 进圈推进' : work ? (drill ? '钻探 ' : '架设 ') + work.progress.toFixed(1) + '/' + work.duration + 's · ' + (inside ? '正在推进' : '离圈暂停') : target ? target.label + ' · ' + Math.round(Math.hypot(target.x - player.x, target.y - player.y) / 10) + ' m' : salvageStateText();
+      missionText = activeRevelation ? '回响显现' : paused ? '回收暂停' : game.phase === 'upgrade' ? '回收生长协议' : game.phase === 'playing' ? game.map.name + ' · 警戒 ' + salvage.alertLevel : salvageStateText();
+      trackedText = target?.hint || salvageStateText();
+      if (!danger) sectorText = '警戒 ' + salvage.alarm + '/100 · ' + (target?.hint || salvageStateText());
       $('relay-progress-wrap').classList.toggle('hidden', !evac && !work);
       $('relay-progress-wrap').classList.toggle('outside', evac ? boarding && Math.hypot(exit.x - player.x, exit.y - player.y) > exit.radius : !!work && !inside);
       if (evac) {
@@ -1381,7 +1385,7 @@
         const chance = salvage.lastChance;
         if (chance?.status === 'available') {
           const offer = '箱 ' + Math.ceil(chance.remaining) + 's / +' + chance.value;
-          if (!objectiveExpanded) setText('objective-text', (boarding ? '登舰 ' + evac.progress.toFixed(1) + '/3s' : '接应 ' + evac.remaining.toFixed(1) + 's') + ' · ' + offer);
+          if (!objectiveExpanded) objectiveText = (boarding ? '登舰 ' + evac.progress.toFixed(1) + '/3s' : '接应 ' + evac.remaining.toFixed(1) + 's') + ' · ' + offer;
           else setText('relay-progress-label', offer + ' · 取货追兵 ×2');
         }
       } else if (work) {
@@ -1392,23 +1396,34 @@
     if (game.siege) {
       const siege = game.siege, target = game.siegeTarget();
       const phaseName = boss?.stage === 3 ? '过载反扑' : boss?.shielded ? '武装狩猎' : '核心裸露';
-      setText('relay-count', '阶段 ' + (boss?.stage || 1) + '/3');
-      setText('objective-text', target ? target.label + ' · ' + Math.round(Math.hypot(target.x - player.x, target.y - player.y) / 10) + ' m' : phaseName);
-      setText('tracked-target', target?.hint || game.map.briefing);
-      setText('mission-state', activeRevelation ? '回响显现' : paused ? '猎场暂停' : game.phase === 'won' ? '巨械击破' : game.phase === 'lost' ? '狩猎中断' : phaseName);
-      setText('sector-status', '拆炮 ' + siege.wrecks.length + '/3 · 接管 ' + siege.captures + ' · 反向 ' + siege.reflections);
+      relayText = '阶段 ' + (boss?.stage || 1) + '/3';
+      objectiveText = target ? target.label + ' · ' + Math.round(Math.hypot(target.x - player.x, target.y - player.y) / 10) + ' m' : phaseName;
+      trackedText = target?.hint || game.map.briefing;
+      missionText = activeRevelation ? '回响显现' : paused ? '猎场暂停' : game.phase === 'won' ? '巨械击破' : game.phase === 'lost' ? '狩猎中断' : phaseName;
+      sectorText = '拆炮 ' + siege.wrecks.length + '/3 · 接管 ' + siege.captures + ' · 反向 ' + siege.reflections;
       $('relay-progress-wrap').classList.add('hidden');
-      $('skill-button').setAttribute('aria-label', 'EMP：接管附近炮座残骸，将范围内重弹朝准星改向，并清除普通敌弹');
-      if (player.skillCooldown <= 0) setText('skill-label', '接管 / 反向');
+      skillAria = 'EMP：接管附近炮座残骸，将范围内重弹朝准星改向，并清除普通敌弹';
+      if (player.skillCooldown <= 0) skillText = '接管 / 反向';
     }
+    setText('mission-state', missionText);
+    setText('health-label', healthText);
+    setText('weapon-name', weaponText);
+    setText('skill-label', skillText);
+    setText('relay-count', relayText);
+    setText('objective-text', objectiveText);
+    setText('tracked-target', trackedText);
+    setText('sector-status', sectorText);
+    if (boss) setText('boss-name', bossText);
     $('relay-progress-label').classList.toggle('hidden', !objectiveExpanded && !!game.salvage && (!!game.salvage.evac || game.salvage.comms.status === 'linking'));
-    $('pause-toggle').disabled = !!activeRevelation || !['playing'].includes(game.phase) || (!!screen && screen !== 'pause');
-    $('pause-toggle').textContent = paused ? '▶' : 'Ⅱ'; $('pause-toggle').setAttribute('aria-label', paused ? '继续游戏' : '暂停游戏');
-    $('fullscreen-pause').disabled = $('pause-toggle').disabled;
-    $('fullscreen-pause').textContent = paused ? '继续' : '暂停';
-    $('help-toggle').disabled = !!activeRevelation || (!!screen && !['welcome', 'pause'].includes(screen));
-    $('map-toggle').disabled = !!activeRevelation || !['ready', 'playing'].includes(game.phase) || (!!screen && !['welcome', 'pause', 'map'].includes(screen));
-    $('field-map-toggle').disabled = $('map-toggle').disabled;
+    setDisabled($('skill-button'), skillDisabled);
+    setNodeAttribute($('skill-button'), 'aria-label', skillAria);
+    setDisabled($('pause-toggle'), !!activeRevelation || !['playing'].includes(game.phase) || (!!screen && screen !== 'pause'));
+    setText('pause-toggle', paused ? '▶' : 'Ⅱ'); setNodeAttribute($('pause-toggle'), 'aria-label', paused ? '继续游戏' : '暂停游戏');
+    setDisabled($('fullscreen-pause'), $('pause-toggle').disabled);
+    setText('fullscreen-pause', paused ? '继续' : '暂停');
+    setDisabled($('help-toggle'), !!activeRevelation || (!!screen && !['welcome', 'pause'].includes(screen)));
+    setDisabled($('map-toggle'), !!activeRevelation || !['ready', 'playing'].includes(game.phase) || (!!screen && !['welcome', 'pause', 'map'].includes(screen)));
+    setDisabled($('field-map-toggle'), $('map-toggle').disabled);
     updateCoach(); updateReloadMeter();
     if ($('minimap').getClientRects().length) renderer.drawMinimap($('minimap'), game);
   }
@@ -1422,22 +1437,22 @@
     const state = canPlay() ? game.interactionState() : { action: '', hint: '' };
     const hint = $('interaction-hint'), key = hint.querySelector('kbd');
     hint.classList.toggle('hidden', !state.hint || (game.mode === 'voyage' && !state.action));
-    hint.querySelector('span').textContent = state.hint.replace(/^E\s*·\s*/, '');
+    setNodeText(hint.querySelector('span'), state.hint.replace(/^E\s*·\s*/, ''));
     key.classList.toggle('hidden', !state.action);
-    key.textContent = window.matchMedia('(pointer: coarse)').matches ? '点按' : 'E';
-    $('touch-interact').disabled = !state.action;
+    setNodeText(key, window.matchMedia('(pointer: coarse)').matches ? '点按' : 'E');
+    setDisabled($('touch-interact'), !state.action);
     setText('touch-interact', state.action || '交互');
-    $('touch-interact').setAttribute('aria-label', state.action || state.hint || '附近没有可交互目标');
+    setNodeAttribute($('touch-interact'), 'aria-label', state.action || state.hint || '附近没有可交互目标');
     const cargo = game.salvage?.hotCargo, carrying = cargo?.status === 'carried';
     const cargoControl = $('cargo-control'), stage = $('game-stage');
     if (window.matchMedia('(pointer: coarse) and (orientation: landscape)').matches) {
       if (cargoControl.parentElement !== stage) stage.append(cargoControl);
     } else if (cargoControl.parentElement === stage) document.querySelector('.objective-hud').append(cargoControl);
     $('cargo-control').classList.toggle('hidden', !carrying);
-    $('cargo-drop').disabled = !carrying || !canPlay();
+    setDisabled($('cargo-drop'), !carrying || !canPlay());
     if (carrying) {
       setText('cargo-status', '▣ +' + cargo.bonus + ' · 广播 ' + Math.ceil(cargo.pulseRemaining) + 's');
-      $('cargo-drop').setAttribute('aria-label', '放下黑匣子：停止新广播并失去武器加成，已来的追兵不会消失');
+      setNodeAttribute($('cargo-drop'), 'aria-label', '放下黑匣子：停止新广播并失去武器加成，已来的追兵不会消失');
     }
   }
   function dropCargo() { act(() => game.dropSalvageCargo()); }
@@ -1475,9 +1490,9 @@
     const player = game.player;
     const returnAnchor = game.awakeningState?.returnAnchor;
     const canReturn = returnAnchor?.remaining > 0 && !game.awakeningState.returning && Math.hypot(player.x - returnAnchor.x, player.y - returnAnchor.y) >= 16;
-    $('dash-button').disabled = !canPlay() || !!queuedDash || player.dashTimer > 0 || (player.dashCooldown > dashBufferWindow && !player.iceChaseReady && !canReturn);
+    setDisabled($('dash-button'), !canPlay() || !!queuedDash || player.dashTimer > 0 || (player.dashCooldown > dashBufferWindow && !player.iceChaseReady && !canReturn));
     setText('dash-label', canReturn ? '折返 ' + returnAnchor.remaining.toFixed(1) + 's' : player.iceChaseReady ? '转向追击' : queuedDash ? '冲刺待发' : player.dashCooldown > 0 ? player.dashCooldown.toFixed(1) + 's' : game.tacticId === 'decoy-dash' ? game.tactical.cooldown <= 0 ? '诱饵冲刺' : '冲刺·诱饵' + Math.ceil(game.tactical.cooldown) + 's' : '相位冲刺');
-    $('dash-button').setAttribute('aria-label', canReturn ? '折返跃迁，再按朝起点方向冲刺，距离不超过普通冲刺，岩石会阻挡' : game.tacticId === 'decoy-dash' ? game.tactical.cooldown > 0 ? '相位冲刺；诱饵还需 ' + Math.ceil(game.tactical.cooldown) + ' 秒可部署' : '相位冲刺并留下诱饵' : '相位冲刺');
+    setNodeAttribute($('dash-button'), 'aria-label', canReturn ? '折返跃迁，再按朝起点方向冲刺，距离不超过普通冲刺，岩石会阻挡' : game.tacticId === 'decoy-dash' ? game.tactical.cooldown > 0 ? '相位冲刺；诱饵还需 ' + Math.ceil(game.tactical.cooldown) + ' 秒可部署' : '相位冲刺并留下诱饵' : '相位冲刺');
   }
   FrontierTouch.bindTouchAction($('dash-button'), () => act(requestDash));
   FrontierTouch.bindTouchAction($('skill-button'), () => act(() => game.useSkill()));
@@ -1634,11 +1649,13 @@
   window.addEventListener('pagehide', rememberBest);
   window.addEventListener('scroll', () => { pointer.dirty = true; }, { passive: true, capture: true });
   document.addEventListener('fullscreenchange', () => { renderer.resize(); renderDirty = hudDirty = pointer.dirty = true; });
-  new ResizeObserver(() => { renderer.resize(); keepWeaponVisible(); renderDirty = hudDirty = pointer.dirty = true; if (screen === 'map') renderer.drawMinimap($('tactical-map'), game, { detailed: true }); }).observe(stage);
+  function resizeCanvas() { renderer.resize(); keepWeaponVisible(); renderDirty = hudDirty = pointer.dirty = true; if (screen === 'map') renderer.drawMinimap($('tactical-map'), game, { detailed: true }); }
+  new ResizeObserver(resizeCanvas).observe(stage);
   motionPreference.addEventListener('change', event => { if (read('frontier-motion') === null) renderer.reducedMotion = event.matches; });
 
   function frame(timestamp) {
     const dt = Math.min(.05, (timestamp - (lastTimestamp || timestamp)) / 1000); lastTimestamp = timestamp;
+    if (renderer.dpr !== Math.min(window.devicePixelRatio || 1, 2)) resizeCanvas();
     let simulationDt = 0;
     // Coalesce pointer events into one DOM update per frame. Measure fresh bounds
     // here so scrolling and layout changes cannot leave a stale aim offset.
