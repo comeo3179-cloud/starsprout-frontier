@@ -4090,7 +4090,7 @@
                 }
               }
               bullet.lifetime = 0;
-              if (bullet.kind === 'grenade') { bullet.x = impact.x; bullet.y = impact.y; this._burstGrenade(bullet); }
+              if (bullet.kind === 'grenade') { bullet.x = impact.x; bullet.y = impact.y; this._burstGrenade(bullet, hit.target); }
               else if (bullet.kind === 'starline') this._placeStarPin(bullet, impact.x, impact.y, hit.target.id);
               else this._emit('spark', impact, { color: bullet.color });
               break;
@@ -4147,9 +4147,11 @@
       this.bullets = this.bullets.filter(bullet => bullet.lifetime > 0);
     }
 
-    _burstGrenade(bullet) {
+    _burstGrenade(bullet, impactCover) {
       if (bullet.exploded || this.phase !== 'playing') return;
       const blockers = this.salvage || this.siege ? [...this.obstacles] : [];
+      // Contact damage may already have removed cover; this blast still shields salvage objects.
+      const sourceBlockers = impactCover ? [...blockers, impactCover] : blockers;
       bullet.exploded = true;
       bullet.lifetime = 0;
       this._emit('grenade-burst', bullet, { radius: bullet.blastRadius, color: bullet.color });
@@ -4165,11 +4167,11 @@
       if (this.salvage) for (const source of this.salvage.sources) {
         if (this.phase !== 'playing') break;
         if (source.hp > 0 && distance(bullet, source) <= bullet.blastRadius + source.radius &&
-          !blockers.some(rock => this._segmentHit(bullet.x, bullet.y, source.x - bullet.x, source.y - bullet.y, rock, 0) !== null)) this._damageSalvageSource(source, bullet.damage);
+          !sourceBlockers.some(rock => this._segmentHit(bullet.x, bullet.y, source.x - bullet.x, source.y - bullet.y, rock, 0) !== null)) this._damageSalvageSource(source, bullet.damage);
       }
       if (this.salvage) for (const node of this.salvage.nodes) {
         if (node.status === 'idle' && distance(bullet, node) <= bullet.blastRadius + node.radius &&
-          !blockers.some(rock => this._segmentHit(bullet.x, bullet.y, node.x - bullet.x, node.y - bullet.y, rock, 0) !== null)) this._armSalvageNode(node);
+          !sourceBlockers.some(rock => this._segmentHit(bullet.x, bullet.y, node.x - bullet.x, node.y - bullet.y, rock, 0) !== null)) this._armSalvageNode(node);
       }
       for (const enemy of this.enemies) {
         if (this.phase !== 'playing') break;

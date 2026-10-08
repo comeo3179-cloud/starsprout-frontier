@@ -119,6 +119,26 @@ test('only an unobstructed real grenade explosion arms nearby nodes', () => {
   }
 });
 
+for (const kind of ['source', 'node']) test('a real grenade that destroys cover still shields the ' + kind + ' from that same blast', () => {
+  const { game, node } = arena();
+  const source = { ...game.salvage.sources.find(item => item.kind === 'vault'), x: 1330, y: 1000 };
+  node.x = 1330; game.salvage.sources = kind === 'source' ? [source] : []; game.salvage.nodes = kind === 'node' ? [node] : [];
+  const rock = { id: game._id(), type: 'rock', x: 1250, y: 1000, radius: 22, fragile: true, hp: 60, maxHp: 95 };
+  game.obstacles = [rock]; game.player.weapon = 3; game.player.critChance = 0; game._syncWeapon();
+  const enemy = game.spawnEnemy('crawler', { x: 1320, y: 1000 }); enemy.hp = enemy.maxHp = 500;
+  function fire() {
+    game.fireTimer = 0; game._shoot(); const grenade = game.bullets.find(bullet => bullet.kind === 'grenade');
+    for (let frame = 0; frame < 60 && !grenade.exploded; frame++) game._updateBullets(1 / 60);
+    assert.equal(grenade.exploded, true);
+  }
+  fire();
+  assert.equal(game.obstacles.length, 0); assert.equal(rock.hp, 0);
+  assert.equal(enemy.hp, 500 - WEAPONS[3].damage, 'retain the existing salvage enemy blast rule');
+  if (kind === 'source') assert.equal(source.hp, source.maxHp); else assert.equal(node.status, 'idle');
+  fire();
+  if (kind === 'source') assert.equal(source.hp, source.maxHp - WEAPONS[3].damage); else assert.equal(node.status, 'primed');
+});
+
 test('pause phases freeze node and round clocks and terminal damage clears all armed fields', () => {
   const { game, node } = arena(); game.useSkill(); const remaining = node.remaining, round = game.salvage.round.remaining;
   game.phase = 'upgrade'; game.update(.25); near(node.remaining, remaining); near(game.salvage.round.remaining, round);
