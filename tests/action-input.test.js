@@ -13,6 +13,7 @@ function implementation(name, next) {
   return source.slice(start, end);
 }
 const functions = [
+  ['setNodeText', '\n  function setDisabled'], ['setDisabled', '\n  function setNodeAttribute'], ['setNodeAttribute', '\n  function selectChoice'],
   ['clearInput', '\n  function canPlay'], ['canPlay', '\n\n  function tone'],
   ['movement', '\n  function requestDash'], ['requestDash', '\n  function updateDashBuffer'],
   ['updateDashBuffer', '\n  function updateDashControl'], ['updateDashControl', "\n  FrontierTouch.bindTouchAction($('dash-button')"],
@@ -30,7 +31,8 @@ function node() {
     querySelectorAll: () => [], addEventListener() {},
     append(child) { this.children.push(child); },
     prepend(child) { this.children.unshift(child); },
-    setAttribute(name, value) { this.attributes[name] = value; }
+    setAttribute(name, value) { this.attributes[name] = value; },
+    getAttribute(name) { return this.attributes[name] ?? null; }
   };
 }
 
