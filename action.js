@@ -840,6 +840,7 @@
       foldNote(selector, label);
       $('screen-content').append($('screen-content').querySelector(selector).closest('details'));
     }
+    $('screen-content').querySelector('h2 + p').after($('screen-content').querySelector('.menu-buttons'));
   }
   function resume() { paused = false; closeScreen(); }
   function showHelp() {
