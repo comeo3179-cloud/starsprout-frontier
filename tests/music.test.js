@@ -154,3 +154,26 @@ test('siege effects sound individually and keep one bounded music scheduler', ()
   }
   f.audio.setEnabled(false); f.tick(1000); assert.equal(f.audio.voices, 0); assert.equal(f.timers.size, 0);
 });
+
+test('three salvage sectors sound distinct and changing sectors does not accumulate music schedulers', () => {
+  const signatures = new Set(), f = fixture();
+  for (const sectorId of ['scrapyard', 'frostport', 'stormcity']) {
+    const before = f.audio.context?.nodes.length || 0;
+    f.audio.setScene('explore', sectorId); f.audio.play('click');
+    for (let i = 0; i < 160; i++) { f.tick(60); f.audio.setScene('explore', sectorId); assert.equal(f.timers.size, 1); assert.ok(f.audio.musicVoices.size <= 12 && f.audio.voices <= 48); }
+    const notes = f.audio.context.nodes.slice(before).filter(node => node.frequency && node.started !== undefined);
+    signatures.add(JSON.stringify(notes.slice(0, 35).map(node => [node.type, node.frequency.calls[0][1]])));
+    f.audio.setScene('silent'); f.tick(1000); assert.equal(f.timers.size, 0); assert.equal(f.audio.musicVoices.size, 0);
+  }
+  assert.equal(signatures.size, 3);
+});
+
+test('node reversal and refit chains remain bounded and respect master mute', () => {
+  const f = fixture(); f.audio.setScene('combat', 'stormcity'); f.audio.play('click');
+  for (let i = 0; i < 20; i++) {
+    for (const [kind, arg] of [['salvage-node-arm', 'lane'], ['salvage-node-reverse', 'lane'], ['salvage-hunt-alert', 'arc'], ['salvage-hunt-defeated', 'arc'], ['salvage-mod-equipped', 'arc'], ['salvage-refit-hit', 'arc'], ['salvage-refit-hit', 'frost']]) f.audio.play(kind, arg);
+    assert.equal(f.timers.size, 1); assert.ok(f.audio.voices <= 48 && f.audio.musicVoices.size <= 12); f.tick(60);
+  }
+  f.audio.setEnabled(false); f.tick(1000); assert.equal(f.audio.voices, 0); assert.equal(f.timers.size, 0);
+  const before = f.audio.context.nodes.length; f.audio.play('salvage-node-reverse'); assert.equal(f.audio.context.nodes.length, before);
+});
