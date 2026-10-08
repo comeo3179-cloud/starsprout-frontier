@@ -704,7 +704,7 @@ button:focus-visible,a:focus-visible{outline-color:var(--accent)}
   .display-entry p{font-size:10px}
 }
 @media(pointer:coarse){#reload-button{min-height:44px}}
-@media(pointer:coarse) and (orientation:portrait){
+@media(pointer:coarse){
   .salvage-screen .menu-buttons{position:sticky;bottom:0;z-index:2;flex-wrap:nowrap;gap:8px;padding:8px;background:#102238;border-radius:12px;box-shadow:0 -8px 20px #07111f80}
   .salvage-screen .menu-buttons>.launch-button{flex:1;min-width:0;font-size:12px}
   .salvage-screen .menu-buttons>.secondary-button{flex:none;width:84px;min-width:0;padding-inline:8px}
