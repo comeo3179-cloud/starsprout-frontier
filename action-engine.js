@@ -189,7 +189,7 @@
   const SALVAGE_MODS = [
     { id: 'breach', title: '破甲线圈', icon: '⋙', color: '#e7bd82', trigger: '冲刺烙印', hint: '4 秒内下一枪 +25% 伤害、额外穿透一敌，穿过棱盾；岩石仍挡弹。' },
     { id: 'frost', title: '霜爆弹仓', icon: '❄', color: '#a8ddf4', trigger: '精准装填', hint: '4 秒内下一枪 +25% 伤害；首次命中在 85 范围内冰缓敌人 1.4 秒，不穿岩石。' },
-    { id: 'arc', title: '跃电导轨', icon: 'ϟ', color: '#c6bcff', trigger: 'EMP 命中', hint: '4 秒内下一枪 +25% 伤害；首次命中最多跃电两次，依次 35% / 20% 伤害，每跳 150，不穿岩石。' }
+    { id: 'arc', title: '跃电导轨', icon: 'ϟ', color: '#c6bcff', trigger: 'EMP 命中', hint: 'EMP 后转火外围敌群：4 秒内下一枪 +25% 伤害；首次命中最多跃电两次，依次 35% / 20% 伤害，每跳 150，不穿岩石。' }
   ];
   const SALVAGE_LAYOUTS = {
     frostport: { spawn: { x: 350, y: 300 }, sources: [[650, 620], [1000, 930], [1820, 1140], [1570, 460]],

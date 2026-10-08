@@ -2207,8 +2207,10 @@
       if (medical) { ctx.fillRect(-3, -14, 6, 19); ctx.fillRect(-10, -8, 20, 6); }
       else { ctx.fillRect(-11, -9, 21, 6); ctx.fillRect(-2, -3, 5, 9); ctx.fillRect(10, -7, 5, 2); }
       ctx.fillRect(-13, 17, 7, 3); ctx.fillRect(6, 17, 7, 3);
-      if (Math.hypot(s.x - player.x, s.y - player.y) < 120) this.label(this.interactionLabel(s, medical ? '医疗站' : '武器工坊'), 0, -42, color);
+      const near = Math.hypot(s.x - player.x, s.y - player.y) < 120;
+      if (near && this.mapId !== 'salvage') this.label(this.interactionLabel(s, medical ? '医疗站' : '武器工坊'), 0, -42, color);
       ctx.restore();
+      if (near && this.mapId === 'salvage' && this.interaction?.target === s && this.interaction.action) this.drawEncounterLabel(this.interactionLabel(s), s.x, s.y - 42, color, true);
     }
 
     drawContract(contract, player) {
@@ -2567,7 +2569,7 @@
       if (e.type === 'mortar') {
         ctx.save(); ctx.translate(e.x, e.y); ctx.rotate(e.angle || 0);
         box(ctx, -16, -10, 26, 20, 4, '#614d43', '#ffbb87'); circle(ctx, -2, 0, 7, e.windup > 0 ? '#fff0bf' : '#efaa75'); ctx.restore();
-        this.label('炮击虫', e.x, e.y - r - 25, '#ffc48e');
+        if (this.mapId !== 'salvage') this.label('炮击虫', e.x, e.y - r - 25, '#ffc48e');
       }
       if (e.elite && !e.salvageHunt) {
         circle(ctx, e.x, e.y, r + 8, null, '#e9c889', 2);

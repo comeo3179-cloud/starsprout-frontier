@@ -157,6 +157,29 @@ test('a nearby supply action keeps priority instead of stacking a node instructi
   assert.equal(labels.length, 0); assert.ok(r.calls.some(call => call.key === 'fillText' && call.args[0].includes('开启补给'))); assert.equal(r.stack.length, 0);
 });
 
+test('salvage station hints show only the current usable action and avoid the player before later elite labels', () => {
+  for (const kind of ['armory', 'medical']) {
+    const r = fixture(), player = { x: 1100, y: 1000 }, station = { x: 1140, y: 1020, kind }, action = kind === 'armory' ? '强化' : '治疗';
+    r.encounterPlayerPoint = { x: 422, y: 195 };
+    r.interaction = { target: {}, action: '装备改装' }; r.drawStation(station, player); assert.equal(r.encounterLabelRects.length, 0); assert.ok(!r.calls.some(call => call.key === 'fillText'));
+    r.interaction = { target: station, action: '' }; r.drawStation(station, player); assert.equal(r.encounterLabelRects.length, 0);
+    r.interaction.action = action; r.drawStation(station, player); assert.equal(r.encounterLabelRects.length, 1); assert.ok(r.stormHazardLabels[0].text.includes(action));
+    const a = r.encounterLabelRects[0], overlap = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+    assert.ok(!overlap(a, { left: 397, right: 451, top: 168, bottom: 222 }));
+    r.lastPlayer = player; r.drawSalvageHuntMarker({ id: 30, x: station.x + 25, y: station.y + 15, radius: 22, name: '巡逻精英' });
+    assert.equal(r.encounterLabelRects.length, 2); assert.ok(!overlap(a, r.encounterLabelRects[1]));
+    r.calls.length = 0; r.mapId = 'frontier'; r.interaction = { target: {}, action: '' }; r.drawStation(station, player);
+    assert.ok(r.calls.some(call => call.key === 'fillText' && call.args[0] === (kind === 'armory' ? '武器工坊' : '医疗站'))); assert.equal(r.stack.length, 0);
+  }
+});
+
+test('salvage mortar silhouette stays visible without a permanent name while other modes retain the name', () => {
+  const r = fixture(), enemy = { id: 40, type: 'mortar', x: 1120, y: 1020, radius: 20, hp: 100, maxHp: 100, angle: .2 };
+  r.drawEnemy(enemy); assert.ok(r.calls.some(call => call.key === 'ellipse')); assert.ok(!r.calls.some(call => call.key === 'fillText'));
+  r.calls.length = 0; r.mapId = 'frontier'; r.drawEnemy(enemy);
+  assert.ok(r.calls.some(call => call.key === 'fillText' && call.args[0] === '炮击虫')); assert.equal(r.stack.length, 0);
+});
+
 test('new target pointers use one engine selection and terminal states never revive another objective', () => {
   const r = fixture(), game = gameFixture(), labels = [];
   r.updatePointerHud = () => {}; r.drawEncounterLabel = (...args) => labels.push(args); r.nexusPointerPosition = (x, y) => ({ x, y });
