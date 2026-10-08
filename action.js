@@ -841,6 +841,7 @@
       $('screen-content').append($('screen-content').querySelector(selector).closest('details'));
     }
     $('screen-content').querySelector('h2 + p').after($('screen-content').querySelector('.menu-buttons'));
+    $('resume-run').focus({ preventScroll: true });
   }
   function resume() { paused = false; closeScreen(); }
   function showHelp() {
