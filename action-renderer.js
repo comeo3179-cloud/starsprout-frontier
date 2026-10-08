@@ -1369,7 +1369,7 @@
         if (friendly) { path(ctx, [[-5, radius + 12], [-1, radius + 16], [7, radius + 8]], false); ctx.strokeStyle = '#b6ffe3'; ctx.lineWidth = 2 / this.scale; ctx.stroke(); }
       }
       ctx.restore();
-      if (!spent && !this.interaction?.action && (this.salvageSelectedId === node.id || this.nearSalvageNode === node) && Math.hypot(player.x - node.x, player.y - node.y) < 260) this.drawEncounterLabel(friendly ? '已反转' : primed ? (this.touchControls ? '冲刺穿核 / EMP 接管' : 'Shift 穿核 / Q 接管') : '射击唤醒', node.x, node.y - radius - 26 / this.scale, color, true);
+      if (!spent && !this.interaction?.action && (this.salvageSelectedId === node.id || this.nearSalvageNode === node) && Math.hypot(player.x - node.x, player.y - node.y) < 260) this.drawEncounterLabel(friendly ? '反转 · 下一枪 +25%' : primed ? (this.touchControls ? '冲刺穿核 / EMP 接管' : 'Shift 穿核 / Q 接管') : '射击唤醒 · 单次', node.x, node.y - radius - 26 / this.scale, color, true);
     }
 
     drawSalvageMod(drop) {
