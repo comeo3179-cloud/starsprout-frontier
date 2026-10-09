@@ -639,7 +639,8 @@
     }
 
     updateEffects(dt) {
-      for (const p of this.particles) { p.age += dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= Math.exp(-dt * 3); p.vy *= Math.exp(-dt * 3); }
+      const drag = this.particles.length ? Math.exp(-dt * 3) : 1;
+      for (const p of this.particles) { p.age += dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= drag; p.vy *= drag; }
       for (const p of this.rings) p.age += dt;
       for (const p of this.numbers) { p.age += dt; p.y -= dt * (this.reducedMotion ? 12 : p.label ? 22 : 31); }
       for (const p of this.ghosts) p.age += dt;

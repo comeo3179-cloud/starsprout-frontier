@@ -710,6 +710,10 @@ button:focus-visible,a:focus-visible{outline-color:var(--accent)}
   .salvage-screen .menu-buttons>.secondary-button{flex:none;width:84px;min-width:0;padding-inline:8px}
 }
 @media(pointer:coarse) and (orientation:landscape){
+  .map-screen .screen-content{padding-bottom:8px;scroll-padding-bottom:76px}
+  .map-screen .menu-buttons{position:sticky;bottom:0;z-index:2;padding:8px;background:#102238;border-radius:12px;box-shadow:0 -8px 20px #07111f80}
+}
+@media(pointer:coarse) and (orientation:landscape){
   .camp-mode-grid #siege-entry{grid-column:auto}
   .camp-mode-grid .campaign-entry-mark,.camp-mode-grid .trial-entry-symbol{font-size:18px;line-height:1.1}
   .game-stage.siege-mode .field-coach{top:calc(var(--safe-top) + 34px);right:calc(var(--safe-right) + 216px)}
