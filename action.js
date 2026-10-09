@@ -548,7 +548,7 @@
       const previous = voyagePairs().map(item => item.id);
       if (!game.chooseVoyageRoute(routeId, deviceId, deviceId ? slotIndex : null)) { $('voyage-selection').textContent = '航路或装置选择无效，请重新选择。'; return; }
       trackedRelayId = trackedContractId = trackedEncounterId = null; renderer.trackedRelayId = renderer.trackedContractId = renderer.trackedEncounterId = null;
-      renderer.camera.x = game.player.x; renderer.camera.y = game.player.y; renderer.resetEffects(); renderer.pointerHudTime = -1;
+      renderer.camera.x = game.player.x; renderer.camera.y = game.player.y; renderer.resetEffects();
       clearInput(); reactorWasReady = false; renderDirty = true; lastPhase = game.phase; processEvents();
       const pair = voyagePairs().find(item => !previous.includes(item.id));
       if (pair) showVoyageResonance(pair); else if (game.phase === 'upgrade') showUpgrade(); else closeScreen();
@@ -1079,8 +1079,7 @@
     impactPause = 0; lastBurstTone = -1; lastFieldTone = -1; reactorWasReady = false; phaseCoachSeen = false;
     runStats = { shots: weapons.map(() => 0), dashes: 0, perfectReloads: 0 };
     coachStep = 0; coachMoveDistance = 0; objectiveExpanded = false; updateObjectiveDetails();
-    if (renderer.resetEffects) renderer.resetEffects();
-    else { renderer.particles = []; renderer.rings = []; renderer.numbers = []; renderer.ghosts = []; renderer.shake = 0; }
+    renderer.resetEffects();
     clearTimeout(hitTimer); clearTimeout(damageTimer); clearTimeout(bannerTimer); clearTimeout(notificationTimer);
     $('aim-reticle').classList.remove('hit', 'critical'); $('damage-flash').classList.remove('visible'); $('notification').classList.remove('visible'); $('event-banner').classList.add('hidden');
   }

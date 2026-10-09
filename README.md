@@ -22,7 +22,15 @@
 - **单区行动 / 裂隙试炼**：五张战区和独立六波挑战；六把武器、升级进化、可选支线与隐藏技巧。
 - 详细规则在游戏中的“ⓘ 说明”按需展开。电脑悬停查看、点击固定；手机点按查看。
 
-原来的合成塔防原型保留在 [garden.html](garden.html)。
+## 游戏与目录
+
+| 内容 | 入口 / 文件 |
+| --- | --- |
+| 荒原行动：射击、远征与回收 | [index.html](index.html)；`action-engine.js` 规则、`action-renderer.js` 绘制、`action.js` 交互 |
+| 花园原型：合成与塔防 | [garden.html](garden.html)；`engine.js`、`game.js`、`style.css` |
+| 账号与云端进度 | `profile-store.js`、`cloud-profile.js`、`account-ui.js`、`cloudbase/` |
+| 自动测试与检查工具 | `tests/*.test.js`、`scripts/`；源码测试用 `npm test` |
+| 压缩构建与本机产物 | `scripts/build-web.cjs` → `release/web/`；`build-tools/`、`reports/` 为本机依赖和检查记录 |
 
 ## 本地运行
 
